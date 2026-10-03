@@ -30,6 +30,16 @@ def _safe_error_details(exc: Exception) -> str:
     return ', '.join(details)
 
 
+def _is_capacity_error(exc: Exception) -> bool:
+    """Return whether Gemini reported a temporary overload or rate limit."""
+    status_code = getattr(exc, 'status_code', None)
+    message = str(exc).upper()
+    return status_code in (429, 503) or any(
+        marker in message
+        for marker in ('429 TOO MANY REQUESTS', '503 UNAVAILABLE', 'RESOURCE_EXHAUSTED')
+    )
+
+
 def chat_json(system_prompt: str, user_prompt: str) -> dict:
     """
     Send a prompt pair to the configured model and parse the JSON response.
@@ -53,19 +63,37 @@ def chat_json(system_prompt: str, user_prompt: str) -> dict:
             settings.GEMINI_MODEL,
         )
         client = genai.Client(api_key=api_key)
-        logger.info('Sending Gemini generate_content request: model=%s', settings.GEMINI_MODEL)
-        response = client.models.generate_content(
-            model=settings.GEMINI_MODEL,
-            contents=user_prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=system_prompt,
-                response_mime_type='application/json',
-                temperature=0.5,
-            ),
+        config = types.GenerateContentConfig(
+            system_instruction=system_prompt,
+            response_mime_type='application/json',
+            temperature=0.5,
         )
+        model = settings.GEMINI_MODEL
+        logger.info('Sending Gemini generate_content request: model=%s', model)
+        try:
+            response = client.models.generate_content(
+                model=model,
+                contents=user_prompt,
+                config=config,
+            )
+        except Exception as exc:
+            fallback_model = getattr(settings, 'GEMINI_FALLBACK_MODEL', '')
+            if not _is_capacity_error(exc) or not fallback_model or fallback_model == model:
+                raise
+            logger.warning(
+                'Gemini model %s is temporarily unavailable; retrying with fallback model=%s',
+                model,
+                fallback_model,
+            )
+            model = fallback_model
+            response = client.models.generate_content(
+                model=model,
+                contents=user_prompt,
+                config=config,
+            )
         raw = response.text
         logger.info(
-            'Gemini response received: model=%s', settings.GEMINI_MODEL,
+            'Gemini response received: model=%s', model,
         )
         if raw is None or not str(raw).strip():
             raise AIUnavailableError('Gemini returned an empty response.')

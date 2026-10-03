@@ -132,6 +132,7 @@ LOGGING = {
 # ---- AI configuration (apps/ai_engine) ----
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
 GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-3.5-flash-lite')
+GEMINI_FALLBACK_MODEL = os.getenv('GEMINI_FALLBACK_MODEL', 'gemini-3.5-flash-lite')
 
 # ---- CerebroX business rules (apps/analytics) ----
 WEAK_TOPIC_THRESHOLDS = {
