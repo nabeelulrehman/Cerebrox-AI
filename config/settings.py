@@ -6,7 +6,9 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-ENV_FILE = BASE_DIR / '.env'
+ENV_FILE = BASE_DIR / 'env'
+if not ENV_FILE.exists():
+    ENV_FILE = BASE_DIR / '.env'
 load_dotenv(dotenv_path=ENV_FILE, override=True)
 
 SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-change-this-in-production')
@@ -128,8 +130,8 @@ LOGGING = {
 }
 
 # ---- AI configuration (apps/ai_engine) ----
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
-OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4o-mini')
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
+GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-3.5-flash-lite')
 
 # ---- CerebroX business rules (apps/analytics) ----
 WEAK_TOPIC_THRESHOLDS = {

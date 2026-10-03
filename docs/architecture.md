@@ -13,7 +13,7 @@
   │                                Quizzes, QuizAnswers, AINotes — all scoped to
   │                                the owning student via FK chains
   │
-  └──► apps/ai_engine ──► OpenAI API (notes, MCQs — both take Course + Topic +
+  └──► apps/ai_engine ──► Gemini API (notes, MCQs — both take Course + Topic +
                             Study Level [+ Difficulty for quizzes]; optional
                             recommendation phrasing)
 ```
@@ -39,7 +39,7 @@ so one student's content is never visible to another. See
 ## App responsibilities
 - **accounts** — auth (register/login/logout/profile/password), `study_level` (+ custom text for "Other") as part of the learning profile, role-based access, custom admin panel — now oversight-only (platform stats + read-only view into any student's own courses/performance), since there's no global content left to manage.
 - **learning** — student-owned `Course`/`Topic` CRUD (create/edit/delete are all ownership-checked), AI notes generation + storage (notes are generated using the student's Course + Topic + current Study Level).
-- **ai_engine** — isolated AI provider layer (`openai_client.py`) with an offline fallback generator so the app is fully runnable/demoable without an API key. Prompts for notes and MCQs both take `(course, topic, study_level, ...)`.
+- **ai_engine** — isolated Gemini provider layer (`gemini_client.py`) with an offline fallback generator so the app is fully runnable/demoable without an API key. Prompts for notes and MCQs both take `(course, topic, study_level, ...)`.
 - **quizzes** — AI-generated MCQ storage (scoped to a student's own Topic), quiz lifecycle (generate → take → submit), pure-backend scoring (`evaluation.py`). Each `Quiz` snapshots the `study_level` used to generate it.
 - **analytics** — dynamic performance aggregation (`course_wise_performance`, `topic_wise_performance`), threshold-based weak-topic detection, rule-based (optionally AI-phrased) recommendations — all computed only from that student's own quiz history.
 - **dashboard** — personalized student home (course progress, scores, strong/weak topics, recommendations, recent activity) + public landing/about pages.

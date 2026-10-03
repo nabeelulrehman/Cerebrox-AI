@@ -5,7 +5,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from .models import Course, Topic, AINote
 from .forms import CourseForm, TopicForm, NotesGenerateForm, NotesSectionForm
 from apps.ai_engine.notes_generator import generate_notes
-from apps.ai_engine.openai_client import AIUnavailableError
+from apps.ai_engine.gemini_client import AIUnavailableError
 
 
 # ---------- Courses (student-owned, no predefined/global list) ----------

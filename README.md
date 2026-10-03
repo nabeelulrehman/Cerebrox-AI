@@ -10,7 +10,7 @@ Performance Analysis → Strong & Weak Topics → AI Recommendations →
 Dashboard Automatically Updated.
 
 Stack: Django 5 (server-rendered templates + DRF for the API layer), SQLite,
-Tailwind CSS (CDN), vanilla JS, OpenAI API (optional — see AI Configuration).
+Tailwind CSS (CDN), vanilla JS, Gemini API (optional — see AI Configuration).
 
 ---
 
@@ -25,15 +25,15 @@ pip install -r requirements.txt
 
 ## 2. Environment Variables
 
-Copy the provided `.env` (already present with safe local defaults) and edit as needed:
+Edit the provided `env` file (already present with safe local defaults):
 
 ```
 SECRET_KEY=django-insecure-change-this-in-production
 DEBUG=True
 ALLOWED_HOSTS=127.0.0.1,localhost
 
-OPENAI_API_KEY=            # required for real AI notes and quiz generation
-OPENAI_MODEL=gpt-4o-mini
+GEMINI_API_KEY=            # required for real AI notes and quiz generation
+GEMINI_MODEL=gemini-3.5-flash-lite
 ```
 
 **No API key?** The app still runs fully: `apps/ai_engine` falls back to a
@@ -101,7 +101,7 @@ calculation, and recommendations.
 ### Manual testing checklist
 - [ ] Register a new student with a Study Level (including "Other" + custom text) → redirected to Add Courses
 - [ ] Add a course and a topic under it
-- [ ] Generate AI notes for that topic with `OPENAI_API_KEY` set — confirm the note reflects your Study Level
+- [ ] Generate AI notes for that topic with `GEMINI_API_KEY` set — confirm the note reflects your Study Level
 - [ ] Generate a quiz (choose Difficulty), answer questions, submit before/after the timer runs out
 - [ ] Confirm quiz result shows correct score/percentage and per-question review
 - [ ] Confirm dashboard reflects updated course progress, weak topics and recommendations after a low-scoring quiz
@@ -114,8 +114,8 @@ calculation, and recommendations.
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `DisallowedHost` error | Your host/domain isn't in `ALLOWED_HOSTS` | Add it to `.env` |
-| AI notes/MCQs cannot be generated | No `OPENAI_API_KEY` set or the OpenAI request failed | Set a real key in `.env`, restart the server, and run `manage.py diagnose_openai` |
+| `DisallowedHost` error | Your host/domain isn't in `ALLOWED_HOSTS` | Add it to `env` or `.env` |
+| AI notes/MCQs cannot be generated | No `GEMINI_API_KEY` set or the Gemini request failed | Set a real key in `env`, restart the server, and run `manage.py diagnose_gemini` |
 | `django.db.utils.OperationalError: no such table` | Migrations not applied | `python3 manage.py migrate` |
 | 404 when opening a course/topic/quiz link | It belongs to a different student's account | Ownership is enforced by design — log in as the account that created it |
 | Static styles missing in production | `collectstatic` not run / `DEBUG=False` without a static server | Run `collectstatic` and serve `staticfiles/` (e.g. via WhiteNoise or your web server) |
@@ -128,12 +128,12 @@ calculation, and recommendations.
 
 ```
 CerebroX-AI/
-├── manage.py, requirements.txt, .env, .gitignore, db.sqlite3
+├── manage.py, requirements.txt, env, .gitignore, db.sqlite3
 ├── config/                # settings, urls, wsgi, asgi
 ├── apps/
 │   ├── accounts/          # auth, study_level, roles, oversight-only admin panel
 │   ├── learning/          # student-owned Course, Topic, AINote + web/API views
-│   ├── ai_engine/         # openai_client, prompts, notes/mcq/recommendation generators (course+topic+study_level aware)
+│   ├── ai_engine/         # Gemini client, prompts, notes/mcq/recommendation generators (course+topic+study_level aware)
 │   ├── quizzes/           # Question, Quiz(+study_level snapshot), QuizAnswer, services.py, evaluation.py
 │   ├── analytics/         # performance.py (course_wise + topic_wise), weak_topics.py, recommendations.py
 │   └── dashboard/         # personalized student home + public landing/about

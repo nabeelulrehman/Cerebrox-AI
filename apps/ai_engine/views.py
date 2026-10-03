@@ -6,7 +6,7 @@ from apps.learning.models import Topic, AINote
 from .serializers import NotesGenerateSerializer, MCQGenerateSerializer
 from .notes_generator import generate_notes
 from .mcq_generator import generate_questions
-from .openai_client import AIUnavailableError
+from .gemini_client import AIUnavailableError
 
 
 class GenerateNotesAPIView(APIView):

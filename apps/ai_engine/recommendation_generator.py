@@ -1,5 +1,5 @@
 from . import prompts
-from .openai_client import chat_json, AIUnavailableError
+from .gemini_client import chat_json, AIUnavailableError
 
 
 def phrase_recommendation(topic: str, score_percent: float, status: str, fallback_text: str) -> str:

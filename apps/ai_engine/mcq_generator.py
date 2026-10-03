@@ -1,6 +1,6 @@
 import random
 from . import prompts
-from .openai_client import chat_json, AIUnavailableError
+from .gemini_client import chat_json, AIUnavailableError
 
 _LETTERS = ('A', 'B', 'C', 'D')
 

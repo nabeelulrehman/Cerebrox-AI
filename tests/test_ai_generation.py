@@ -4,7 +4,7 @@ from unittest.mock import patch
 from apps.learning.models import Course, Topic, AINote
 from apps.ai_engine.notes_generator import generate_notes
 from apps.ai_engine.mcq_generator import generate_questions
-from apps.ai_engine.openai_client import AIUnavailableError
+from apps.ai_engine.gemini_client import AIUnavailableError
 
 User = get_user_model()
 
@@ -17,8 +17,8 @@ class AIGenerationTests(TestCase):
         self.course = Course.objects.create(student=self.student, name='Physics', icon='⚛️')
         self.topic = Topic.objects.create(course=self.course, name='Motion', description='desc')
 
-    def test_missing_openai_key_raises_unavailable_error(self):
-        with patch('apps.ai_engine.notes_generator.chat_json', side_effect=AIUnavailableError('OPENAI_API_KEY is not set.')):
+    def test_missing_gemini_key_raises_unavailable_error(self):
+        with patch('apps.ai_engine.notes_generator.chat_json', side_effect=AIUnavailableError('GEMINI_API_KEY is not set.')):
             with self.assertRaises(AIUnavailableError):
                 generate_notes('Physics', 'Motion', 'Matric', 'medium')
 

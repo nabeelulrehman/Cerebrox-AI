@@ -1,5 +1,5 @@
 from . import prompts
-from .openai_client import chat_json, AIUnavailableError
+from .gemini_client import chat_json, AIUnavailableError
 
 
 def generate_notes(course: str, topic: str, study_level: str, length: str = 'medium') -> dict:
@@ -10,20 +10,20 @@ def generate_notes(course: str, topic: str, study_level: str, length: str = 'med
     )
 
     if not isinstance(data, dict):
-        raise AIUnavailableError('OpenAI returned an invalid notes payload.')
+        raise AIUnavailableError('Gemini returned an invalid notes payload.')
 
     required = ['introduction', 'explanation', 'key_terms', 'examples', 'important_points', 'summary']
     missing = [key for key in required if not data.get(key)]
     if missing:
-        raise AIUnavailableError('OpenAI response was missing required notes sections.')
+        raise AIUnavailableError('Gemini response was missing required notes sections.')
 
     for key in ('key_terms', 'examples', 'important_points'):
         value = data.get(key, [])
         if isinstance(value, str):
             value = [value]
         if not isinstance(value, list) or not value:
-            raise AIUnavailableError(f'OpenAI response contained an empty or invalid {key} section.')
+            raise AIUnavailableError(f'Gemini response contained an empty or invalid {key} section.')
         data[key] = value
 
-    data.setdefault('generated_by', 'openai')
+    data.setdefault('generated_by', 'gemini')
     return data
