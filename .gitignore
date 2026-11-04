@@ -13,3 +13,4 @@ venv/
 cereenv/
 *.log
 .DS_Store
+private_media/

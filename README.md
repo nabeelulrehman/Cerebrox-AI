@@ -25,21 +25,36 @@ pip install -r requirements.txt
 
 ## 2. Environment Variables
 
-Edit the provided `env` file (already present with safe local defaults):
+Copy the example file to `.env` in the project root (the same directory as
+`manage.py`), then edit it:
 
-```
-SECRET_KEY=django-insecure-change-this-in-production
-DEBUG=True
-ALLOWED_HOSTS=127.0.0.1,localhost
-
-GEMINI_API_KEY=            # required for real AI notes and quiz generation
-GEMINI_MODEL=gemini-3.5-flash-lite
+```powershell
+Copy-Item .env.example .env
 ```
 
-**No API key?** The app still runs fully: `apps/ai_engine` falls back to a
-clearly-labelled offline generator for notes and MCQs, so every other
-feature (courses, quizzes, scoring, weak-topic detection, recommendations,
-dashboard) remains fully demoable at zero cost.
+Set `GEMINI_API_KEY` in `.env` to your own Gemini API key. The `.env` file is
+git-ignored; do not commit it. Environment variables already set by the
+process take precedence over values in `.env` when they contain a non-empty
+key. Create or replace a key at [Google AI Studio](https://aistudio.google.com/apikey);
+never paste it into source code or commit it.
+
+Run `python manage.py check_gemini_config` to safely check whether a key is
+configured and which source Django uses. This does not contact Google. Run
+`python manage.py diagnose_gemini` to test an actual Gemini request.
+
+The default model is the faster `gemini-3.5-flash-lite`, with
+`gemini-3.8-flash` as a capacity fallback. Notes stream to the page and are
+saved only after a complete, validated response. The Gemini SDK is configured
+server-side; the key is never needed in frontend code. Requests use a 150-second
+SDK timeout and at most two retries for transient network, timeout, rate-limit,
+or server errors, with exponential backoff. The SDK exposes one request timeout
+for this client rather than independent connect and read values; change
+`GEMINI_REQUEST_TIMEOUT_MS`, `GEMINI_MAX_RETRIES`, or
+`GEMINI_RETRY_BASE_SECONDS` in `.env` if your deployment needs different limits.
+
+**No API key?** The app still runs, but AI notes and teacher AI features are
+unavailable. The student quiz generator can use clearly labelled placeholder
+MCQs; rule-based learning recommendations continue to work.
 
 ## 3. Database Setup & Migrations
 
@@ -114,8 +129,9 @@ calculation, and recommendations.
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `DisallowedHost` error | Your host/domain isn't in `ALLOWED_HOSTS` | Add it to `env` or `.env` |
-| AI notes/MCQs cannot be generated | No `GEMINI_API_KEY` set or the Gemini request failed | Set a real key in `env`, restart the server, and run `manage.py diagnose_gemini` |
+| `DisallowedHost` error | Your host/domain isn't in `ALLOWED_HOSTS` | Add it to `.env` or set the `ALLOWED_HOSTS` process variable |
+| Gemini reports `API_KEY_INVALID` | `.env` is missing, an old process environment key overrides it, or the configured key is invalid/revoked | Run `python manage.py check_gemini_config`; create a new key in Google AI Studio, update `GEMINI_API_KEY` in the root `.env` (or process environment), restart Django, then run `python manage.py diagnose_gemini` |
+| AI notes/MCQs cannot be generated | `.env` is missing or the Gemini request failed | Copy `.env.example` to `.env`, set a real key, restart the server, and run `python manage.py diagnose_gemini` |
 | `django.db.utils.OperationalError: no such table` | Migrations not applied | `python3 manage.py migrate` |
 | 404 when opening a course/topic/quiz link | It belongs to a different student's account | Ownership is enforced by design — log in as the account that created it |
 | Static styles missing in production | `collectstatic` not run / `DEBUG=False` without a static server | Run `collectstatic` and serve `staticfiles/` (e.g. via WhiteNoise or your web server) |

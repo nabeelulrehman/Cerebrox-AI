@@ -1,0 +1,9 @@
+{% extends "layouts/teacher_layout.html" %}
+{% block title %}New quiz — {{ classroom.name }}{% endblock %}
+{% block content %}
+<a href="{% url 'classrooms:teacher_detail' classroom.id %}" class="text-sm grad-text">← {{ classroom.name }}</a>
+<h1 class="font-display text-2xl font-bold mt-2 mb-5">New class quiz</h1>
+<form method="post" class="glass p-6 grid gap-4 max-w-2xl">{% csrf_token %}{% include "components/form_fields.html" %}
+  <p class="text-xs" style="color:var(--txt-faint)">Scheduled times use Pakistan Standard Time (Asia/Karachi). Supervised quizzes require you to scan each student's QR before they can start.</p>
+  <button class="btn btn-primary" type="submit">Create quiz</button></form>
+{% endblock %}

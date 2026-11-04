@@ -1,0 +1,18 @@
+{% extends "layouts/teacher_layout.html" %}
+{% block title %}Verify students{% endblock %}
+{% block content %}
+<h1 class="font-display text-2xl font-bold mb-1">Verify a student</h1>
+<p class="text-sm mb-5" style="color:var(--txt-dim)">Scan the QR on the student's screen. Each code works once and expires after a couple of minutes.</p>
+{% csrf_token %}
+<div class="grid md:grid-cols-2 gap-6 max-w-4xl">
+  <div class="glass p-5"><video id="cam" class="w-full rounded" playsinline muted></video>
+    <p id="cam-note" class="text-xs mt-2" style="color:var(--txt-faint)"></p>
+    <button id="cam-start" class="btn btn-primary mt-3" type="button">Start camera</button></div>
+  <div class="glass p-5"><h2 class="font-display font-semibold mb-2">Or paste the code</h2>
+    <p class="text-xs mb-2" style="color:var(--txt-faint)">Camera QR detection needs a browser that supports the BarcodeDetector API (e.g. Chrome/Edge). Otherwise use the code shown under the student's QR.</p>
+    <input id="manual" class="field font-mono" placeholder="verification code" autocomplete="off">
+    <button id="manual-go" class="btn btn-ghost mt-3" type="button">Verify</button>
+    <div id="result" class="mt-4 text-sm" aria-live="polite"></div></div>
+</div>
+{% endblock %}
+{% block extra_js %}{% load static %}<script src="{% static 'js/scanner.js' %}"></script>{% endblock %}

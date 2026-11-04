@@ -1,0 +1,10 @@
+{% extends "layouts/dashboard_layout.html" %}
+{% block title %}Teaching sessions{% endblock %}
+{% block content %}
+<h1 class="font-display text-2xl font-bold mb-5">Teaching sessions <span class="text-xs font-normal" style="color:var(--txt-faint)">(optional)</span></h1>
+{% for s in sessions %}<div class="glass p-5 mb-3 flex justify-between items-center gap-3"><div><p class="font-medium">{{ s.title }}</p><p class="text-xs" style="color:var(--txt-dim)">{{ s.teacher.get_full_name|default:s.teacher.username }} &middot; {{ s.starts_at }} &middot; {{ s.duration_minutes }} min &middot; {% if s.price %}{{ s.price }}{% else %}free{% endif %}</p>
+  {% for sid, b in mine.items %}{% if sid == s.id and b.status == 'confirmed' and s.meeting_link %}<p class="text-sm mt-1"><a class="grad-text" href="{{ s.meeting_link }}" rel="noopener">Join link</a></p>{% endif %}{% endfor %}</div>
+  {% for sid, b in mine.items %}{% if sid == s.id %}<span class="pill">{{ b.get_status_display }}</span>{% endif %}{% endfor %}
+  {% if s.id not in mine %}<form method="post" action="{% url 'market:session_book' s.id %}">{% csrf_token %}<button class="btn btn-primary">Book</button></form>{% endif %}</div>
+{% empty %}<p class="text-sm" style="color:var(--txt-faint)">No upcoming sessions.</p>{% endfor %}
+{% endblock %}

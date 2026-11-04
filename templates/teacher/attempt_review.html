@@ -1,0 +1,24 @@
+{% extends "layouts/teacher_layout.html" %}
+{% block title %}Review attempt{% endblock %}
+{% block content %}
+<a href="{% url 'class_quizzes:report' attempt.quiz_id %}" class="text-sm grad-text">← Results</a>
+<h1 class="font-display text-2xl font-bold mt-2 mb-1">{{ attempt.student.get_full_name|default:attempt.student.username }} — {{ attempt.quiz.title }}</h1>
+<p class="text-sm mb-5" style="color:var(--txt-dim)">{% if attempt.grading_complete %}Final: {{ attempt.final_score }}/{{ attempt.total_marks }}{% else %}Grading incomplete: review each descriptive answer.{% endif %}{% if attempt.submitted_late %} &middot; submitted after the deadline{% endif %}</p>
+<div class="grid gap-4">
+{% for a in answers %}<div class="glass p-5">
+  <p class="font-medium mb-2">{{ forloop.counter }}. {{ a.question.text }} <span class="text-xs" style="color:var(--txt-faint)">({{ a.question.marks }} marks)</span></p>
+  {% if a.question.kind == 'mcq' %}
+    <p class="text-sm">Selected: <b>{{ a.selected|default:"—" }}</b> &middot; correct: <b>{{ a.question.correct_answer }}</b> &middot; marks {{ a.awarded_marks }}</p>
+  {% else %}
+    <p class="text-sm whitespace-pre-wrap p-3 rounded" style="background:var(--panel)">{{ a.text_answer|default:"(no answer)" }}</p>
+    {% if a.question.model_answer %}<p class="text-xs mt-2" style="color:var(--txt-faint)">Model answer: {{ a.question.model_answer }}</p>{% endif %}
+    {% if a.ai_suggested_marks is not None %}<div class="mt-3 p-3 rounded text-sm" style="border:1px dashed var(--line)"><b>AI suggestion (not applied):</b> {{ a.ai_suggested_marks }} marks — {{ a.ai_feedback }}
+      <form method="post" action="{% url 'class_quizzes:accept_ai' a.id %}" class="mt-2">{% csrf_token %}<button class="btn btn-ghost !py-1" type="submit">I approve these marks</button></form></div>{% endif %}
+    <form method="post" action="{% url 'class_quizzes:grade_answer' a.id %}" class="flex flex-wrap gap-2 items-end mt-3">{% csrf_token %}
+      <div><label class="label">Marks (0–{{ a.question.marks }})</label><input class="field" name="marks" value="{{ a.awarded_marks|default_if_none:'' }}" inputmode="decimal" required></div>
+      <div class="flex-1 min-w-[12rem]"><label class="label">Feedback</label><input class="field" name="feedback" value="{{ a.teacher_feedback }}"></div>
+      <button class="btn btn-primary" type="submit">Save marks</button></form>
+    <form method="post" action="{% url 'class_quizzes:ai_suggest' a.id %}" class="mt-2">{% csrf_token %}<button class="text-xs grad-text" type="submit">Get AI-suggested marks</button></form>
+  {% endif %}
+</div>{% endfor %}</div>
+{% endblock %}

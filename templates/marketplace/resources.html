@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Study resources{% endblock %}
+{% block content %}
+<h1 class="font-display text-2xl font-bold mb-1">Study resources from verified teachers</h1>
+<p class="text-sm mb-5" style="color:var(--txt-dim)">Public resources are free to download once you are logged in. Paid resources unlock after payment is verified. Entirely optional.</p>
+<div class="grid md:grid-cols-2 gap-4">
+{% for r in resources %}<div class="glass p-5"><p class="font-display font-semibold">{{ r.title }}</p><p class="text-xs" style="color:var(--txt-faint)">by {{ r.teacher.get_full_name|default:r.teacher.username }}</p><p class="text-sm mt-2" style="color:var(--txt-dim)">{{ r.description }}</p>
+  <div class="mt-3 flex gap-2 items-center">
+  {% if r.visibility == 'public' %}<a class="btn btn-primary" href="{% url 'market:download' r.id %}">Download</a>
+  {% else %}<span class="pill">{{ r.price }}</span>
+    {% if user.is_authenticated and user.is_student %}<a class="btn btn-ghost" href="{% url 'market:download' r.id %}">Download (if purchased)</a>
+    <form method="post" action="{% url 'market:buy' r.id %}">{% csrf_token %}<button class="btn btn-primary" type="submit">Request purchase</button></form>{% endif %}{% endif %}
+  </div></div>
+{% empty %}<p class="text-sm" style="color:var(--txt-faint)">No public resources yet.</p>{% endfor %}</div>
+{% endblock %}

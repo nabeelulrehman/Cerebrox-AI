@@ -1,0 +1,18 @@
+{% extends "layouts/admin_layout.html" %}
+{% block title %}Teacher approvals — Admin{% endblock %}
+{% block content %}
+<h1 class="font-display text-2xl font-bold mb-4">Teacher approvals</h1>
+<div class="flex gap-2 mb-4">{% for v, l in statuses %}<a class="pill {% if v == status %}pill-medium{% endif %}" href="?status={{ v }}">{{ l }}</a>{% endfor %}</div>
+<div class="grid gap-4">
+{% for p in profiles %}<div class="glass p-5">
+  <p class="font-display font-semibold">{{ p.user.get_full_name|default:p.user.username }} <span class="text-xs" style="color:var(--txt-faint)">@{{ p.user.username }} &middot; {{ p.user.email }}</span></p>
+  <p class="text-sm mt-1">{{ p.headline }}</p>
+  <p class="text-sm mt-2"><b>Subjects:</b> {{ p.subjects }} &middot; <b>Experience:</b> {{ p.experience_years }} yrs &middot; {{ p.get_teaching_mode_display }}</p>
+  <p class="text-sm mt-1 whitespace-pre-wrap"><b>Qualifications:</b> {{ p.qualifications }}</p>
+  <form method="post" action="{% url 'admin_panel:teacher_decide' p.id %}" class="flex flex-wrap gap-2 items-end mt-3">{% csrf_token %}
+    <input class="field flex-1 min-w-[12rem]" name="note" placeholder="Note (shown to the teacher on rejection/suspension)" value="{{ p.verification_note }}">
+    <button class="btn btn-primary" name="decision" value="approve">Approve</button>
+    <button class="btn btn-ghost" name="decision" value="reject">Reject</button>
+    <button class="btn btn-ghost" name="decision" value="suspend">Suspend</button></form></div>
+{% empty %}<p class="text-sm" style="color:var(--txt-faint)">Nothing here.</p>{% endfor %}</div>
+{% endblock %}

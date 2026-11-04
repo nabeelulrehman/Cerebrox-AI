@@ -7,6 +7,7 @@
     <p class="text-sm mb-6" style="color:var(--txt-dim)">Login to continue your learning.</p>
     <form method="post" class="flex flex-col gap-4">
       {% csrf_token %}
+      {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
       <div>
         <label class="label">Username or email</label>
         <input class="field" type="text" name="username" required autofocus>
@@ -19,6 +20,7 @@
     </form>
     <p class="text-sm mt-5 text-center" style="color:var(--txt-dim)">
       No account? <a href="{% url 'accounts:register' %}" class="grad-text font-medium">Register</a>
+      &middot; <a href="{% url 'teachers:register' %}" class="grad-text font-medium">Register as a teacher</a>
     </p>
   </div>
 </div>

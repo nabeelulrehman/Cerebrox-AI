@@ -1,10 +1,10 @@
-from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
+from apps.accounts.permissions import student_required
 
 from . import performance, weak_topics, recommendations
 
 
-@login_required
+@student_required
 def performance_page(request):
     context = {
         'overview': performance.student_overview(request.user),
@@ -14,7 +14,7 @@ def performance_page(request):
     return render(request, 'student/performance.html', context)
 
 
-@login_required
+@student_required
 def recommendations_page(request):
     context = {
         'recommendations': recommendations.recommendations_for_student(request.user),

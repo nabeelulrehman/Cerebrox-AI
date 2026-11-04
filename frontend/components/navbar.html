@@ -7,6 +7,8 @@
       {% if user.is_authenticated %}
         {% if user.is_admin_role %}
           <a href="{% url 'admin_panel:dashboard' %}" class="navlink">Admin</a>
+        {% elif user.is_teacher %}
+          <a href="{% url 'teachers:dashboard' %}" class="navlink">Teacher dashboard</a>
         {% else %}
           <a href="{% url 'dashboard:home' %}" class="navlink">Dashboard</a>
           <a href="{% url 'learning:courses' %}" class="navlink">My Courses</a>

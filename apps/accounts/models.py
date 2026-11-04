@@ -7,12 +7,15 @@ class User(AbstractUser):
     CerebroX custom user.
     role drives access control across the whole project:
     - 'student' can browse subjects/topics, generate notes/quizzes, see their own analytics.
+    - 'teacher' is an OPTIONAL add-on role (apps.teachers). Teachers must be approved by an admin
+      before they can use any teacher feature. Students never need a teacher.
     - 'admin' can manage subjects/topics/questions and view students (apps.accounts.admin_urls).
     Django's own is_staff/is_superuser are kept separate for the built-in /django-admin/.
     """
 
     class Role(models.TextChoices):
         STUDENT = 'student', 'Student'
+        TEACHER = 'teacher', 'Teacher'
         ADMIN = 'admin', 'Admin'
 
     class StudyLevel(models.TextChoices):
@@ -45,7 +48,19 @@ class User(AbstractUser):
 
     @property
     def is_student(self):
-        return self.role == self.Role.STUDENT
+        return str(self.role).strip().casefold() == self.Role.STUDENT
+
+    @property
+    def is_teacher(self):
+        return self.role == self.Role.TEACHER
+
+    @property
+    def is_verified_teacher(self):
+        """True only for teacher accounts an administrator has approved."""
+        if not self.is_teacher:
+            return False
+        profile = getattr(self, 'teacher_profile', None)
+        return bool(profile and profile.is_approved)
 
     @property
     def is_admin_role(self):

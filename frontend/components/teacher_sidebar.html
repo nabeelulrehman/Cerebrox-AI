@@ -1,0 +1,14 @@
+<aside id="sidebar" class="hidden md:block w-60 shrink-0 border-r px-4 py-6" style="border-color:var(--line);">
+  <nav class="flex flex-col gap-1">
+    <a href="{% url 'teachers:dashboard' %}" class="navlink">📊 Teacher dashboard</a>
+    {% if user.is_verified_teacher %}
+    <a href="{% url 'classrooms:teacher_classes' %}" class="navlink">🏫 My classes</a>
+    <a href="{% url 'class_quizzes:scanner' %}" class="navlink">📷 Verify students (QR)</a>
+    <a href="{% url 'market:teacher_resources' %}" class="navlink">📁 Materials</a>
+    <a href="{% url 'market:teacher_sessions' %}" class="navlink">🗓 Sessions</a>
+    <a href="{% url 'market:teacher_inbox' %}" class="navlink">✉️ Messages</a>
+    {% endif %}
+    <a href="{% url 'teachers:profile_edit' %}" class="navlink">🎓 Teacher profile</a>
+    <a href="{% url 'accounts:profile' %}" class="navlink">👤 Account</a>
+  </nav>
+</aside>

@@ -1,7 +1,8 @@
-from django.contrib.auth import login, logout, authenticate, update_session_auth_hash
+from django.contrib.auth import login, logout, update_session_auth_hash
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.shortcuts import render, redirect, get_object_or_404
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.contrib.auth import get_user_model
 
 from .forms import RegisterForm, LoginForm, ProfileForm, AdminPasswordChangeForm
@@ -11,7 +12,7 @@ User = get_user_model()
 
 def register_view(request):
     if request.user.is_authenticated:
-        return redirect('dashboard:home')
+        return redirect('teachers:dashboard' if request.user.is_teacher else 'dashboard:home')
     if request.method == 'POST':
         form = RegisterForm(request.POST)
         if form.is_valid():
@@ -26,24 +27,24 @@ def register_view(request):
 
 def login_view(request):
     if request.user.is_authenticated:
-        return redirect('dashboard:home')
+        return redirect('teachers:dashboard' if request.user.is_teacher else 'dashboard:home')
+    next_url = request.POST.get('next') or request.GET.get('next') or ''
+    form = LoginForm(request, data=request.POST or None)
     if request.method == 'POST':
-        identifier = request.POST.get('username', '')
-        password = request.POST.get('password', '')
-        user = authenticate(request, username=identifier, password=password)
-        if user is None:
-            # allow logging in with email as well as username
-            try:
-                candidate = User.objects.get(email__iexact=identifier)
-                user = authenticate(request, username=candidate.username, password=password)
-            except User.DoesNotExist:
-                user = None
-        if user is not None:
+        if form.is_valid():
+            user = form.get_user()
             login(request, user)
             messages.success(request, f'Welcome back, {user.first_name or user.username}!')
-            return redirect('admin_panel:dashboard' if user.is_admin_role else 'dashboard:home')
+            if next_url and url_has_allowed_host_and_scheme(
+                    next_url, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
+                return redirect(next_url)
+            if user.is_admin_role:
+                return redirect('admin_panel:dashboard')
+            if user.is_teacher:
+                return redirect('teachers:dashboard')
+            return redirect('dashboard:home')
         messages.error(request, 'Invalid credentials. Please try again.')
-    return render(request, 'accounts/login.html', {'form': LoginForm()})
+    return render(request, 'accounts/login.html', {'form': form, 'next': next_url})
 
 
 @login_required

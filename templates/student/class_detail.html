@@ -1,0 +1,23 @@
+{% extends "layouts/dashboard_layout.html" %}
+{% block title %}{{ c.name }}{% endblock %}
+{% block content %}
+<a href="{% url 'classrooms:my_classes' %}" class="text-sm grad-text">← My Classes</a>
+<h1 class="font-display text-2xl font-bold mt-2">{{ c.name }}</h1>
+<p class="text-sm mb-5" style="color:var(--txt-dim)">Teacher: {{ c.teacher.get_full_name|default:c.teacher.username }} &middot; {{ c.subject }}</p>
+<div class="grid lg:grid-cols-2 gap-6">
+  <div class="glass p-5"><h2 class="font-display font-semibold mb-3">Class quizzes <span class="pill">teacher-assigned</span></h2>
+    {% for q in class_quizzes %}<a href="{% url 'class_quizzes:entry' q.share_token %}" class="flex justify-between py-2 border-b text-sm" style="border-color:var(--line)"><span>{{ q.title }}</span><span class="grad-text">Open →</span></a>
+    {% empty %}<p class="text-sm" style="color:var(--txt-faint)">No quizzes published.</p>{% endfor %}</div>
+  <div class="glass p-5"><h2 class="font-display font-semibold mb-3">Class materials</h2>
+    {% for r in resources %}<a href="{% url 'market:download' r.id %}" class="flex justify-between py-2 border-b text-sm" style="border-color:var(--line)"><span>{{ r.title }}</span><span class="grad-text">Download</span></a>
+    {% empty %}<p class="text-sm" style="color:var(--txt-faint)">No materials shared.</p>{% endfor %}</div>
+  <div class="glass p-5"><h2 class="font-display font-semibold mb-3">Announcements</h2>
+    {% for a in announcements %}<div class="py-2 border-b" style="border-color:var(--line)"><p class="text-sm font-medium">{{ a.title }}</p><p class="text-xs" style="color:var(--txt-dim)">{{ a.body|linebreaksbr }}</p></div>
+    {% empty %}<p class="text-sm" style="color:var(--txt-faint)">Nothing yet.</p>{% endfor %}</div>
+  <div class="glass p-5 lg:col-span-2"><h2 class="font-display font-semibold mb-2">Privacy</h2>
+    <p class="text-sm mb-3" style="color:var(--txt-dim)">By default your teacher sees only your work in <i>this class</i>. You may also share a summary of your independent practice with them. You can change this at any time.</p>
+    <form method="post" action="{% url 'classrooms:toggle_share' enr.id %}">{% csrf_token %}
+      {% if enr.share_progress %}<button class="btn btn-ghost" name="share" value="0">Stop sharing my independent progress</button>
+      {% else %}<button class="btn btn-ghost" name="share" value="1">Share a summary of my independent progress</button>{% endif %}</form></div>
+</div>
+{% endblock %}

@@ -1,0 +1,12 @@
+{% extends "layouts/teacher_layout.html" %}
+{% block title %}My classes{% endblock %}
+{% block content %}
+<h1 class="font-display text-2xl font-bold mb-5">My classes</h1>
+<div class="grid md:grid-cols-2 gap-6">
+  <div class="grid gap-3 content-start">
+    {% for c in classes %}<a href="{% url 'classrooms:teacher_detail' c.id %}" class="glass glass-hover p-4 block"><p class="font-medium">{{ c.name }} {% if not c.is_active %}<span class="pill">inactive</span>{% endif %}</p><p class="text-xs" style="color:var(--txt-dim)">{{ c.subject }} &middot; {{ c.get_enrollment_policy_display }}</p></a>
+    {% empty %}<p class="text-sm" style="color:var(--txt-faint)">No classes yet.</p>{% endfor %}
+  </div>
+  <form method="post" class="glass p-6 grid gap-3 content-start"><h2 class="font-display font-semibold">New class</h2>{% csrf_token %}{% include "components/form_fields.html" %}<button class="btn btn-primary" type="submit">Create class</button></form>
+</div>
+{% endblock %}

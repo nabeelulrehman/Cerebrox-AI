@@ -1,0 +1,99 @@
+{% extends "layouts/teacher_layout.html" %}
+{% block title %}{{ quiz.title }}{% endblock %}
+{% block content %}
+<a href="{% url 'classrooms:teacher_detail' quiz.classroom_id %}" class="text-sm grad-text">← {{ quiz.classroom.name }}</a>
+<div class="flex flex-wrap justify-between gap-3 mt-2 mb-5">
+  <div><h1 class="font-display text-2xl font-bold">{{ quiz.title }} <span class="pill">{{ quiz.get_status_display }}</span></h1>
+    <p class="text-sm" style="color:var(--txt-dim)">{{ quiz.duration_minutes }} min &middot; {{ quiz.max_attempts }} attempt(s) &middot; {{ quiz.total_marks }} marks{% if quiz.supervised %} &middot; <b>QR-supervised</b>{% endif %}{% if quiz.negative_marking %} &middot; negative marking {{ quiz.negative_marking }}{% endif %}</p></div>
+  <div class="flex gap-2 items-start">
+    {% if quiz.status == 'published' %}
+      <form method="post" action="{% url 'class_quizzes:set_status' quiz.id %}">{% csrf_token %}<button name="status" value="closed" class="btn btn-ghost">Close quiz</button></form>
+    {% elif quiz.status == 'draft' %}
+      <form method="post" action="{% url 'class_quizzes:set_status' quiz.id %}">{% csrf_token %}<button name="status" value="published" class="btn btn-primary">Publish</button></form>
+    {% else %}
+      <form method="post" action="{% url 'class_quizzes:set_status' quiz.id %}">{% csrf_token %}<button name="status" value="published" class="btn btn-ghost">Reopen</button></form>
+    {% endif %}
+    <a class="btn btn-ghost" href="{% url 'class_quizzes:report' quiz.id %}">Results</a>
+  </div>
+</div>
+
+{% if quiz.status == 'published' %}
+<section class="glass p-5 mb-6" aria-labelledby="schedule-heading">
+  <div class="flex flex-wrap justify-between items-start gap-4 mb-4">
+    <div>
+      <h2 id="schedule-heading" class="font-display font-semibold text-lg">Quiz schedule</h2>
+      <p class="text-sm mt-1" style="color:var(--txt-dim)">
+        {{ quiz.title }} · {{ quiz.classroom.name }} · {{ quiz.get_status_display }}
+      </p>
+    </div>
+    <details class="w-full sm:w-auto">
+      <summary class="btn btn-ghost cursor-pointer list-none text-center">Edit Schedule</summary>
+      <form method="post" action="{% url 'class_quizzes:schedule_edit' quiz.id %}"
+            class="glass p-5 mt-3 grid gap-4 w-full sm:min-w-[26rem] sm:max-w-xl">
+        {% csrf_token %}
+        <h3 class="font-display font-semibold">Edit quiz schedule</h3>
+        <p class="text-xs" style="color:var(--txt-faint)">All times are in Asia/Karachi.</p>
+        {% if has_attempts %}
+          <div class="alert alert-error" role="note">
+            This quiz already has {{ attempt_count }} student attempt{{ attempt_count|pluralize }}.
+            Changing its schedule will not delete or reset existing attempts or results.
+          </div>
+        {% endif %}
+        <div class="grid sm:grid-cols-2 gap-3">
+          {% for field in schedule_form %}
+            {% if field.name != 'confirm_attempts' %}
+              <div>
+                <label class="label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                {{ field }}
+                {% for error in field.errors %}<p class="text-xs mt-1" style="color:var(--bad)">{{ error }}</p>{% endfor %}
+              </div>
+            {% endif %}
+          {% endfor %}
+        </div>
+        {% if has_attempts %}
+          <label class="flex gap-2 items-start text-sm">
+            {{ schedule_form.confirm_attempts }}
+            <span>I understand existing student attempts and results will be preserved.</span>
+          </label>
+          {% for error in schedule_form.confirm_attempts.errors %}<p class="text-xs" style="color:var(--bad)">{{ error }}</p>{% endfor %}
+        {% endif %}
+        {% for error in schedule_form.non_field_errors %}<p class="text-xs" style="color:var(--bad)">{{ error }}</p>{% endfor %}
+        <button class="btn btn-primary w-max" type="submit">Save schedule</button>
+      </form>
+    </details>
+  </div>
+  <dl class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
+    <div><dt class="label">Opening</dt><dd>{% if opening_local %}{{ opening_local|date:"M j, Y" }} · {{ opening_local|time:"g:i A" }} PKT{% else %}Available immediately{% endif %}</dd></div>
+    <div><dt class="label">Closing</dt><dd>{% if closing_local %}{{ closing_local|date:"M j, Y" }} · {{ closing_local|time:"g:i A" }} PKT{% else %}No closing time{% endif %}</dd></div>
+    <div><dt class="label">Duration</dt><dd>{{ quiz.duration_minutes }} minutes</dd></div>
+    <div><dt class="label">Total questions</dt><dd>{{ questions|length }}</dd></div>
+    <div><dt class="label">Total marks</dt><dd>{{ quiz.total_marks }}</dd></div>
+  </dl>
+</section>
+
+<div class="glass p-5 mb-6">
+  <h2 class="font-display font-semibold mb-2">Share</h2>
+  <p class="text-sm mb-2" style="color:var(--txt-dim)">Send this link by WhatsApp or any channel. It only works for logged-in students enrolled in this class.</p>
+  <input class="field font-mono text-xs" readonly value="{{ share_link }}" onclick="this.select()">
+  <form method="post" action="{% url 'class_quizzes:email_link' quiz.id %}" class="mt-3">{% csrf_token %}<button class="btn btn-ghost" type="submit">Email link to enrolled students</button></form>
+  {% if quiz.supervised %}<p class="text-sm mt-3">Supervised: open the <a class="grad-text" href="{% url 'class_quizzes:scanner' %}">QR scanner</a> to authorize students.</p>{% endif %}
+</div>
+{% endif %}
+
+<div class="grid lg:grid-cols-2 gap-6">
+  <div class="glass p-5">
+    <h2 class="font-display font-semibold mb-3">Questions ({{ questions|length }})</h2>
+    {% for q in questions %}<div class="py-2 border-b" style="border-color:var(--line)">
+      <div class="flex justify-between gap-3"><p class="text-sm">{{ forloop.counter }}. {{ q.text }} {% if q.ai_generated %}<span class="pill">AI</span>{% endif %}</p>
+        {% if not has_attempts %}<form method="post" action="{% url 'class_quizzes:question_delete' q.id %}">{% csrf_token %}<button class="text-xs" style="color:var(--bad)">Delete</button></form>{% endif %}</div>
+      <p class="text-xs" style="color:var(--txt-faint)">{{ q.get_kind_display }} &middot; {{ q.marks }} marks{% if q.kind == 'mcq' %} &middot; answer {{ q.correct_answer }}{% endif %}</p></div>
+    {% empty %}<p class="text-sm" style="color:var(--txt-faint)">No questions yet.</p>{% endfor %}
+  </div>
+  <div class="grid gap-6 content-start">
+    {% if not has_attempts %}
+    <form method="post" action="{% url 'class_quizzes:question_add' quiz.id %}" class="glass p-5 grid gap-3"><h2 class="font-display font-semibold">Add a question</h2>{% csrf_token %}{% include "components/form_fields.html" with form=q_form %}<button class="btn btn-primary" type="submit">Add question</button></form>
+    <form method="post" action="{% url 'class_quizzes:ai_generate' quiz.id %}" class="glass p-5 grid gap-3"><h2 class="font-display font-semibold">Generate MCQs with AI</h2><p class="text-xs" style="color:var(--txt-faint)">Review generated questions before publishing. If the AI is unavailable nothing is added.</p>{% csrf_token %}{% include "components/form_fields.html" with form=ai_form %}<button class="btn btn-ghost" type="submit">Generate</button></form>
+    {% else %}<p class="glass p-5 text-sm" style="color:var(--txt-dim)">Students have started attempts, so questions are locked to keep grading fair.</p>{% endif %}
+  </div>
+</div>
+{% endblock %}

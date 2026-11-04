@@ -8,4 +8,15 @@
     <a href="{% url 'analytics:recommendations' %}" class="navlink">💡 Recommendations</a>
     <a href="{% url 'accounts:profile' %}" class="navlink">👤 Profile</a>
   </nav>
+  <div class="mt-6 pt-4 border-t" style="border-color:var(--line)">
+    <p class="text-xs uppercase tracking-wide mb-2 px-1" style="color:var(--txt-faint)">Teacher-assisted <span class="normal-case">(optional)</span></p>
+    <nav class="flex flex-col gap-1">
+      <a href="{% url 'teachers:directory' %}" class="navlink">🔎 Find Teachers</a>
+      <a href="{% url 'classrooms:my_classes' %}" class="navlink">🏫 My Classes</a>
+      <a href="{% url 'class_quizzes:mine' %}" class="navlink">📋 Teacher-Assigned Quizzes</a>
+      <a href="{% url 'market:resources' %}" class="navlink">📁 Shared Study Materials</a>
+      <a href="{% url 'market:sessions' %}" class="navlink">🗓 Teaching Sessions</a>
+      <a href="{% url 'market:my_guidance' %}" class="navlink">✉️ My Messages</a>
+    </nav>
+  </div>
 </aside>

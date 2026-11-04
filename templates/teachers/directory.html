@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Find teachers — CerebroX AI{% endblock %}
+{% block content %}
+<h1 class="font-display text-2xl font-bold mb-1">Verified teachers</h1>
+<p class="text-sm mb-5" style="color:var(--txt-dim)">Optional guidance. You can keep learning on your own with AI at any time.</p>
+<form method="get" class="glass p-4 grid md:grid-cols-6 gap-3 mb-6 items-end">
+  <div class="md:col-span-2"><label class="label">Subject / name / qualification</label><input class="field" name="q" value="{{ q }}"></div>
+  <div><label class="label">Mode</label>
+    <select class="field" name="mode"><option value="">Any</option>{% for v, l in modes %}<option value="{{ v }}" {% if v == mode %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+  <div><label class="label">Max hourly rate</label><input class="field" name="max_price" value="{{ max_price }}" inputmode="decimal"></div>
+  <div><label class="label">Min. experience (yrs)</label><input class="field" name="min_exp" value="{{ min_exp }}" inputmode="numeric"></div>
+  <div class="flex items-center gap-2"><label class="text-sm"><input type="checkbox" name="free" value="1" {% if free %}checked{% endif %}> Free guidance</label><button class="btn btn-primary" type="submit">Search</button></div>
+</form>
+<div class="grid md:grid-cols-2 gap-4">
+  {% for t in teachers %}
+  <a href="{% url 'teachers:public_profile' t.id %}" class="glass glass-hover p-5 block">
+    <p class="font-display font-semibold">{{ t.user.get_full_name|default:t.user.username }}</p>
+    <p class="text-sm" style="color:var(--txt-dim)">{{ t.headline }}</p>
+    <p class="text-xs mt-2" style="color:var(--txt-faint)">{{ t.subjects }} &middot; {{ t.experience_years }} yrs &middot; {{ t.get_teaching_mode_display }}</p>
+    <p class="mt-2">{% if t.offers_free_guidance %}<span class="pill pill-easy">Free guidance</span>{% endif %}
+      {% if t.hourly_rate %}<span class="pill">{{ t.hourly_rate }}/hr</span>{% endif %}</p>
+  </a>
+  {% empty %}<p class="text-sm" style="color:var(--txt-faint)">No verified teachers match your search yet.</p>{% endfor %}
+</div>
+{% endblock %}

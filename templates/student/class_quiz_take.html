@@ -1,0 +1,26 @@
+{% extends "layouts/dashboard_layout.html" %}
+{% block title %}{{ attempt.quiz.title }}{% endblock %}
+{% block content %}
+<div class="flex items-center justify-between mb-4">
+  <div><h1 class="font-display text-xl font-bold">{{ attempt.quiz.title }}</h1><p class="text-sm" style="color:var(--txt-faint)">Attempt {{ attempt.number }} &middot; {{ attempt.total_marks }} marks</p></div>
+  <div class="glass-soft px-4 py-2 font-display font-semibold" style="border-color:var(--line)">⏱ <span id="time">--:--</span></div>
+</div>
+<form method="post" action="{% url 'class_quizzes:submit' attempt.id %}" id="cq-form"
+      data-remaining="{{ remaining }}" data-save-url="{% url 'class_quizzes:save' attempt.id %}"
+      data-event-url="{% url 'class_quizzes:event' attempt.id %}" data-status-url="{% url 'class_quizzes:status' attempt.id %}"
+      data-supervised="{{ attempt.quiz.supervised|yesno:'1,0' }}">
+  {% csrf_token %}
+  <div class="grid gap-4">
+  {% for q, ans in rows %}
+    <div class="glass p-5"><p class="font-medium mb-3">{{ forloop.counter }}. {{ q.text }} <span class="text-xs" style="color:var(--txt-faint)">({{ q.marks }})</span></p>
+      {% if q.kind == 'mcq' %}<div class="grid sm:grid-cols-2 gap-2">
+        {% for key, text in q.options %}<label class="opt {% if ans.selected == key %}sel{% endif %}"><input type="radio" name="q_{{ q.id }}" value="{{ key }}" class="hidden" {% if ans.selected == key %}checked{% endif %}><span class="key">{{ key }}</span><span>{{ text }}</span></label>{% endfor %}</div>
+      {% else %}<textarea class="field" rows="5" name="q_{{ q.id }}" placeholder="Write your answer">{{ ans.text_answer }}</textarea>{% endif %}
+    </div>
+  {% endfor %}
+  </div>
+  <p id="savestate" class="text-xs mt-3" style="color:var(--txt-faint)">Answers are saved automatically.</p>
+  <button type="submit" class="btn btn-primary mt-4">Submit quiz</button>
+</form>
+{% endblock %}
+{% block extra_js %}{% load static %}<script src="{% static 'js/class_quiz.js' %}"></script><script>initClassQuiz(document.getElementById('cq-form'));</script>{% endblock %}

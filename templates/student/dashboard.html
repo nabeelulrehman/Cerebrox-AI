@@ -22,6 +22,13 @@
   </a>
 </div>
 
+<h2 class="font-display font-semibold mb-2">Teacher-assisted learning <span class="text-xs font-normal" style="color:var(--txt-faint)">(optional — your personal practice above is unaffected)</span></h2>
+<div class="grid md:grid-cols-3 gap-4 mb-8">
+  <a href="{% url 'teachers:directory' %}" class="glass glass-hover p-5"><p class="font-display font-semibold">🔎 Find Teachers</p><p class="text-sm mt-1" style="color:var(--txt-dim)">Browse verified teachers.</p></a>
+  <a href="{% url 'classrooms:my_classes' %}" class="glass glass-hover p-5"><p class="font-display font-semibold">🏫 My Classes</p><p class="text-sm mt-1" style="color:var(--txt-dim)">Join a class with a code or invitation.</p></a>
+  <a href="{% url 'class_quizzes:mine' %}" class="glass glass-hover p-5"><p class="font-display font-semibold">📋 Teacher-Assigned Quizzes</p><p class="text-sm mt-1" style="color:var(--txt-dim)">Reported separately from your practice scores.</p></a>
+</div>
+
 <div class="grid md:grid-cols-2 gap-6">
   <div class="glass p-6">
     <h2 class="font-display font-semibold mb-4">Course performance</h2>

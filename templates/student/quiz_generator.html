@@ -5,11 +5,15 @@
 <p class="mb-1" style="color:var(--txt-dim)">{{ topic.course.name }} → {{ topic.name }}</p>
 <p class="mb-6 text-sm" style="color:var(--txt-faint)">Study level: <strong>{{ user.effective_study_level }}</strong></p>
 <div class="glass p-6 max-w-lg">
-  <form method="post" class="flex flex-col gap-4">
+  <form method="post" class="flex flex-col gap-4" data-quiz-generation-form>
     {% csrf_token %}
     <div><label class="label">Difficulty</label>{{ form.difficulty }}</div>
     <div><label class="label">Number of questions</label>{{ form.num_questions }}</div>
-    <button class="btn btn-primary w-max mt-2" type="submit">🧠 Generate &amp; start quiz</button>
+    <button class="btn btn-primary w-max mt-2" type="submit" data-quiz-submit>🧠 Generate &amp; start quiz</button>
+    <p class="hidden text-sm" style="color:var(--txt-dim)" data-quiz-status aria-live="polite">
+      Generating your quiz. This may take a little while.
+    </p>
   </form>
 </div>
 {% endblock %}
+{% block extra_js %}<script src="{% load static %}{% static 'js/quiz_generation.js' %}"></script>{% endblock %}

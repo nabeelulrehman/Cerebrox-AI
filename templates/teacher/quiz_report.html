@@ -1,0 +1,21 @@
+{% extends "layouts/teacher_layout.html" %}
+{% block title %}Results — {{ quiz.title }}{% endblock %}
+{% block content %}
+<a href="{% url 'class_quizzes:teacher_detail' quiz.id %}" class="text-sm grad-text">← {{ quiz.title }}</a>
+<h1 class="font-display text-2xl font-bold mt-2 mb-1">Results: {{ quiz.title }}</h1>
+<p class="text-sm mb-5" style="color:var(--txt-dim)">Class assessment only — students' independent practice is never included.</p>
+<div class="grid sm:grid-cols-4 gap-4 mb-6">
+  {% include "components/stat_card.html" with label="Submitted" value=report.submitted %}
+  {% include "components/stat_card.html" with label="Pending review" value=report.pending_review %}
+  {% include "components/stat_card.html" with label="Average %" value=report.average|default_if_none:"—" %}
+  {% include "components/stat_card.html" with label="Highest %" value=report.highest|default_if_none:"—" %}
+</div>
+<form method="post" action="{% url 'class_quizzes:release' quiz.id %}" class="mb-4">{% csrf_token %}<button class="btn btn-ghost" type="submit">Release graded results to students</button></form>
+<div class="glass overflow-hidden"><table class="w-full text-sm"><thead><tr class="text-left border-b" style="border-color:var(--line)"><th class="p-3">Student</th><th class="p-3">Attempt</th><th class="p-3">Score</th><th class="p-3">Flags</th><th class="p-3"></th></tr></thead><tbody>
+{% for a in report.attempts %}<tr class="border-b" style="border-color:var(--line)">
+  <td class="p-3">{{ a.student.get_full_name|default:a.student.username }}</td><td class="p-3">{{ a.number }}</td>
+  <td class="p-3">{% if a.grading_complete %}{{ a.final_score }}/{{ a.total_marks }} ({{ a.percentage }}%){% else %}<span class="pill pill-medium">needs grading</span>{% endif %}</td>
+  <td class="p-3 text-xs">{% if a.submitted_late %}late &middot; {% endif %}{% if a.pause_count %}{{ a.pause_count }} pause(s){% endif %}</td>
+  <td class="p-3"><a class="grad-text text-xs" href="{% url 'class_quizzes:attempt_review' a.id %}">Review →</a></td></tr>
+{% empty %}<tr><td class="p-3" colspan="5">No submissions yet.</td></tr>{% endfor %}</tbody></table></div>
+{% endblock %}

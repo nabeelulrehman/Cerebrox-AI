@@ -1,12 +1,12 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from apps.accounts.permissions import IsStudentRole
 
 from . import performance, weak_topics, recommendations
 
 
 class PerformanceAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStudentRole]
 
     def get(self, request):
         overview = performance.student_overview(request.user)
@@ -20,14 +20,14 @@ class PerformanceAPIView(APIView):
 
 
 class WeakTopicsAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStudentRole]
 
     def get(self, request):
         return Response(weak_topics.strongest_and_weakest(request.user))
 
 
 class RecommendationsAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStudentRole]
 
     def get(self, request):
         return Response(recommendations.recommendations_for_student(request.user))

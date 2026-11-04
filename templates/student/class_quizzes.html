@@ -1,0 +1,9 @@
+{% extends "layouts/dashboard_layout.html" %}
+{% block title %}Teacher-Assigned Quizzes{% endblock %}
+{% block content %}
+<h1 class="font-display text-2xl font-bold mb-1">Teacher-Assigned Quizzes</h1>
+<p class="text-sm mb-6" style="color:var(--txt-dim)">Scores here belong to your classes and are kept separate from your personal practice quizzes.</p>
+<div class="grid gap-3">
+{% for q in quizzes %}<a href="{% url 'class_quizzes:entry' q.share_token %}" class="glass glass-hover p-4 flex justify-between"><span>{{ q.title }} <span class="text-xs" style="color:var(--txt-faint)">{{ q.classroom.name }}</span></span><span class="grad-text text-sm">Open →</span></a>
+{% empty %}<p class="text-sm" style="color:var(--txt-faint)">No teacher-assigned quizzes. Your personal AI quizzes work as usual.</p>{% endfor %}</div>
+{% endblock %}

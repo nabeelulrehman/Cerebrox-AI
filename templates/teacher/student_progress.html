@@ -1,0 +1,15 @@
+{% extends "layouts/teacher_layout.html" %}
+{% block title %}{{ student }} — {{ c.name }}{% endblock %}
+{% block content %}
+<a href="{% url 'classrooms:teacher_detail' c.id %}" class="text-sm grad-text">← {{ c.name }}</a>
+<h1 class="font-display text-2xl font-bold mt-2 mb-5">{{ student.get_full_name|default:student.username }}</h1>
+<div class="glass p-5 mb-5"><h2 class="font-display font-semibold mb-2">Class assessments <span class="pill">teacher-assigned</span></h2>
+  {% for a in class_summary.attempts %}<div class="flex justify-between py-2 border-b text-sm" style="border-color:var(--line)"><span>{{ a.quiz.title }} (attempt {{ a.number }})</span><span>{% if a.percentage is not None %}{{ a.percentage }}%{% else %}awaiting grading{% endif %}</span></div>
+  {% empty %}<p class="text-sm" style="color:var(--txt-faint)">No class quiz attempts yet.</p>{% endfor %}
+  {% if class_summary.average is not None %}<p class="text-sm mt-3">Average: <b>{{ class_summary.average }}%</b></p>{% endif %}</div>
+<div class="glass p-5"><h2 class="font-display font-semibold mb-2">Independent practice <span class="pill">shared by student</span></h2>
+  {% if shared_overview %}
+    <p class="text-sm">Quizzes taken: {{ shared_overview.total_quizzes }} &middot; average {{ shared_overview.average_score }}% &middot; best {{ shared_overview.highest_score }}%</p>
+    <p class="text-xs mt-2" style="color:var(--txt-faint)">Summary only. The student can turn sharing off at any time.</p>
+  {% else %}<p class="text-sm" style="color:var(--txt-faint)">This student has not chosen to share their independent progress with you.</p>{% endif %}</div>
+{% endblock %}

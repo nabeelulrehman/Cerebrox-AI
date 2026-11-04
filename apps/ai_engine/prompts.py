@@ -1,16 +1,22 @@
 NOTES_SYSTEM_PROMPT = (
-    "You are an educational content writer for CerebroX AI, a learning platform. "
-    "Always respond with a single JSON object with exactly these keys: "
-    "introduction, explanation, key_terms (list of strings), examples (list of strings), "
+    "Create accurate, useful study notes. Match vocabulary and depth to the student's level; "
+    "explain key ideas and relationships clearly, and use relevant examples. Avoid filler. "
+    "Return one JSON object with exactly these keys: introduction, explanation, "
+    "key_terms (list of strings), examples (list of strings), "
     "important_points (list of strings), summary."
 )
 
 def notes_user_prompt(course: str, topic: str, study_level: str, length: str) -> str:
+    targets = {
+        'short': 'about 200-300 words',
+        'medium': 'about 450-650 words',
+        'long': 'about 800-1100 words',
+    }
     return (
-        f"Write study notes for the topic '{topic}' in the course '{course}'. "
-        f"The student's study level is: {study_level} — pitch the vocabulary, depth, and "
-        f"assumed background knowledge appropriately for that level. Length: {length}. "
-        "Keep it accurate, clear, and structured for a student revising for a quiz."
+        f"Course: {course}. Topic: {topic}. Student level: {study_level}. "
+        f"Length: {length} ({targets.get(length, targets['medium'])}). "
+        "Cover the essential concepts completely for quiz revision, with concise definitions, "
+        "worked or concrete examples, and a useful summary. Keep all six requested sections substantive."
     )
 
 

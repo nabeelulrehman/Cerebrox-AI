@@ -9,6 +9,8 @@ from apps.quizzes.models import Quiz
 def home(request):
     if request.user.is_admin_role:
         return redirect('admin_panel:dashboard')
+    if request.user.is_teacher:
+        return redirect('teachers:dashboard')
 
     overview = performance.student_overview(request.user)
     context = {

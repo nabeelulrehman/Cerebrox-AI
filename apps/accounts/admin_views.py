@@ -7,7 +7,9 @@ subjects/topics/questions directly — that content lives entirely under each
 student's own account. The admin's role here is oversight: platform-wide
 stats and a read-only view into any student's courses/performance.
 """
-from django.shortcuts import render, get_object_or_404
+from django.contrib import messages
+from django.shortcuts import render, get_object_or_404, redirect
+from django.views.decorators.http import require_POST
 
 from .permissions import admin_required
 from django.contrib.auth import get_user_model
@@ -45,3 +47,30 @@ def student_detail(request, student_id):
         'weak': weak_topics.strongest_and_weakest(student),
     }
     return render(request, 'admin/student_detail.html', context)
+
+
+@admin_required
+def teachers_list(request):
+    from apps.teachers.models import TeacherProfile
+    status = request.GET.get('status', 'pending')
+    qs = TeacherProfile.objects.select_related('user')
+    if status in TeacherProfile.Status.values:
+        qs = qs.filter(verification_status=status)
+    return render(request, 'admin/teachers.html', {'profiles': qs, 'status': status,
+                                                   'statuses': TeacherProfile.Status.choices})
+
+
+@admin_required
+@require_POST
+def teacher_decide(request, profile_id):
+    from apps.teachers.models import TeacherProfile
+    profile = get_object_or_404(TeacherProfile, pk=profile_id)
+    decision = request.POST.get('decision')
+    mapping = {'approve': TeacherProfile.Status.APPROVED, 'reject': TeacherProfile.Status.REJECTED,
+               'suspend': TeacherProfile.Status.SUSPENDED}
+    if decision not in mapping:
+        messages.error(request, 'Unknown decision.')
+    else:
+        profile.set_status(mapping[decision], request.user, request.POST.get('note', ''))
+        messages.success(request, f'{profile.user} is now {profile.get_verification_status_display().lower()}.')
+    return redirect('admin_panel:teachers')

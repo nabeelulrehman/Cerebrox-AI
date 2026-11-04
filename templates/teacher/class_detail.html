@@ -1,0 +1,44 @@
+{% extends "layouts/teacher_layout.html" %}
+{% block title %}{{ c.name }}{% endblock %}
+{% block content %}
+<a href="{% url 'classrooms:teacher_classes' %}" class="text-sm grad-text">← Classes</a>
+<div class="flex flex-wrap justify-between items-start gap-3 mt-2 mb-5">
+  <div><h1 class="font-display text-2xl font-bold">{{ c.name }}</h1><p class="text-sm" style="color:var(--txt-dim)">{{ c.subject }} &middot; {{ c.get_enrollment_policy_display }}</p></div>
+  <div class="glass-soft px-4 py-2 text-sm" style="border-color:var(--line)">Join code: <b class="font-mono tracking-widest">{{ c.join_code }}</b>
+    <form method="post" action="{% url 'classrooms:teacher_regenerate_code' c.id %}" class="inline">{% csrf_token %}<button class="text-xs grad-text ml-2" type="submit">regenerate</button></form></div>
+</div>
+
+<div class="grid lg:grid-cols-2 gap-6">
+  <div class="glass p-5">
+    <h2 class="font-display font-semibold mb-3">Students ({{ active|length }})</h2>
+    {% for e in active %}<div class="flex justify-between items-center py-2 border-b" style="border-color:var(--line)">
+      <a href="{% url 'classrooms:teacher_student_progress' c.id e.student.id %}" class="text-sm">{{ e.student.get_full_name|default:e.student.username }}</a>
+      <form method="post" action="{% url 'classrooms:teacher_remove' e.id %}" onsubmit="return confirm('Remove this student from the class?')">{% csrf_token %}<button class="text-xs" style="color:var(--bad)">Remove</button></form></div>
+    {% empty %}<p class="text-sm" style="color:var(--txt-faint)">No students yet.</p>{% endfor %}
+
+    {% if requests %}<h3 class="font-semibold mt-5 mb-2 text-sm">Join requests</h3>
+    {% for e in requests %}<div class="flex justify-between items-center py-2">
+      <span class="text-sm">{{ e.student.get_full_name|default:e.student.username }}</span>
+      <form method="post" action="{% url 'classrooms:teacher_decide' e.id %}" class="flex gap-2">{% csrf_token %}<button name="decision" value="approve" class="btn btn-primary !py-1">Approve</button><button name="decision" value="decline" class="btn btn-ghost !py-1">Decline</button></form></div>{% endfor %}{% endif %}
+    {% if invited %}<h3 class="font-semibold mt-5 mb-2 text-sm">Invited (awaiting student)</h3>
+    {% for e in invited %}<p class="text-sm py-1">{{ e.student.get_full_name|default:e.student.username }}</p>{% endfor %}{% endif %}
+
+    <form method="post" action="{% url 'classrooms:teacher_invite' c.id %}" class="mt-5 flex gap-2 items-end">{% csrf_token %}<div class="flex-1"><label class="label">Invite a registered student</label>{{ invite_form.identifier }}</div><button class="btn btn-primary" type="submit">Invite</button></form>
+  </div>
+
+  <div class="grid gap-6 content-start">
+    <div class="glass p-5">
+      <div class="flex justify-between items-center mb-3"><h2 class="font-display font-semibold">Quizzes</h2><a class="btn btn-primary !py-1" href="{% url 'class_quizzes:create' c.id %}">New quiz</a></div>
+      {% for q in class_quizzes %}<a href="{% url 'class_quizzes:teacher_detail' q.id %}" class="flex justify-between py-2 border-b text-sm" style="border-color:var(--line)"><span>{{ q.title }}</span><span class="pill">{{ q.get_status_display }}</span></a>
+      {% empty %}<p class="text-sm" style="color:var(--txt-faint)">No quizzes yet.</p>{% endfor %}
+    </div>
+    <div class="glass p-5">
+      <h2 class="font-display font-semibold mb-3">Announcements</h2>
+      <form method="post" action="{% url 'classrooms:teacher_announce' c.id %}" class="grid gap-2 mb-3">{% csrf_token %}{{ announce_form.title }}{{ announce_form.body }}<button class="btn btn-ghost" type="submit">Post</button></form>
+      {% for a in announcements %}<div class="py-2 border-b" style="border-color:var(--line)"><p class="text-sm font-medium">{{ a.title }}</p><p class="text-xs" style="color:var(--txt-dim)">{{ a.body|linebreaksbr }}</p></div>{% endfor %}
+    </div>
+    <details class="glass p-5"><summary class="font-display font-semibold cursor-pointer">Class settings</summary>
+      <form method="post" action="{% url 'classrooms:teacher_edit' c.id %}" class="grid gap-3 mt-3">{% csrf_token %}{% include "components/form_fields.html" with form=edit_form %}<button class="btn btn-ghost" type="submit">Save</button></form></details>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,7 @@
+{% extends "layouts/teacher_layout.html" %}
+{% block title %}Teacher profile{% endblock %}
+{% block content %}
+<h1 class="font-display text-2xl font-bold mb-1">Teacher profile</h1>
+<p class="text-sm mb-5" style="color:var(--txt-dim)">Status: <span class="pill">{{ profile.get_verification_status_display }}</span> — verification can only be changed by an administrator.</p>
+<form method="post" class="glass p-6 grid gap-4 max-w-2xl">{% csrf_token %}{% include "components/form_fields.html" %}<button class="btn btn-primary" type="submit">Save</button></form>
+{% endblock %}

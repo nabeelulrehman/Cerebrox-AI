@@ -1,0 +1,19 @@
+{% extends "layouts/dashboard_layout.html" %}
+{% block title %}My Classes{% endblock %}
+{% block content %}
+<h1 class="font-display text-2xl font-bold mb-1">My Classes</h1>
+<p class="text-sm mb-6" style="color:var(--txt-dim)">Optional. Joining a class never changes your personal courses, notes, quizzes or scores.</p>
+<div class="grid md:grid-cols-2 gap-6">
+  <div class="grid gap-4 content-start">
+    {% if invites %}<div class="glass p-5"><h2 class="font-display font-semibold mb-2">Invitations</h2>
+      {% for e in invites %}<div class="flex justify-between items-center py-2"><span class="text-sm">{{ e.classroom.name }} — {{ e.classroom.teacher.get_full_name|default:e.classroom.teacher.username }}</span>
+        <form method="post" action="{% url 'classrooms:respond_invite' e.id %}" class="flex gap-2">{% csrf_token %}<button name="decision" value="accept" class="btn btn-primary !py-1">Accept</button><button name="decision" value="decline" class="btn btn-ghost !py-1">Decline</button></form></div>{% endfor %}</div>{% endif %}
+    <div class="glass p-5"><h2 class="font-display font-semibold mb-2">Joined classes</h2>
+      {% for e in active %}<div class="flex justify-between items-center py-2 border-b" style="border-color:var(--line)"><a href="{% url 'classrooms:student_class' e.classroom.id %}" class="text-sm">{{ e.classroom.name }} <span class="text-xs" style="color:var(--txt-faint)">{{ e.classroom.subject }}</span></a>
+        <form method="post" action="{% url 'classrooms:leave' e.id %}" onsubmit="return confirm('Leave this class?')">{% csrf_token %}<button class="text-xs" style="color:var(--bad)">Leave</button></form></div>
+      {% empty %}<p class="text-sm" style="color:var(--txt-faint)">You are not in any class. That's fine — all AI learning tools work without one.</p>{% endfor %}
+      {% if pending %}<h3 class="text-sm font-semibold mt-4">Waiting for approval</h3>{% for e in pending %}<p class="text-sm py-1">{{ e.classroom.name }}</p>{% endfor %}{% endif %}</div>
+  </div>
+  <form method="post" action="{% url 'classrooms:join' %}" class="glass p-5 grid gap-3 content-start"><h2 class="font-display font-semibold">Join with a code</h2>{% csrf_token %}{{ join_form.code }}<button class="btn btn-primary" type="submit">Join / request to join</button></form>
+</div>
+{% endblock %}

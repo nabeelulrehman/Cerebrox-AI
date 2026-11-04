@@ -1,0 +1,18 @@
+{% extends "layouts/dashboard_layout.html" %}
+{% block title %}Result — {{ attempt.quiz.title }}{% endblock %}
+{% block content %}
+<div class="max-w-2xl">
+  <p class="text-xs" style="color:var(--txt-faint)">{{ attempt.quiz.classroom.name }} &middot; teacher-assigned (not part of your personal practice stats)</p>
+  <h1 class="font-display text-2xl font-bold mb-3">{{ attempt.quiz.title }}</h1>
+  {% if visible %}
+    <div class="glass p-5 mb-5"><p class="font-display text-3xl font-bold">{{ attempt.final_score }}/{{ attempt.total_marks }} <span class="text-lg">({{ attempt.percentage }}%)</span></p>
+      {% if attempt.submitted_late %}<p class="text-xs mt-1" style="color:var(--bad)">Submitted after the deadline.</p>{% endif %}</div>
+    {% for a in answers %}<div class="glass p-4 mb-3"><p class="text-sm font-medium">{{ forloop.counter }}. {{ a.question.text }}</p>
+      {% if a.question.kind == 'mcq' %}<p class="text-xs mt-1">Your answer: {{ a.selected|default:"—" }} &middot; correct: {{ a.question.correct_answer }} &middot; {{ a.awarded_marks }}/{{ a.question.marks }}</p>
+      {% else %}<p class="text-xs mt-1">{{ a.awarded_marks }}/{{ a.question.marks }}{% if a.teacher_feedback %} — {{ a.teacher_feedback }}{% endif %}</p>{% endif %}</div>{% endfor %}
+  {% else %}
+    <div class="glass p-5"><p class="font-display font-semibold">Submitted ✔</p><p class="text-sm mt-1" style="color:var(--txt-dim)">Your result will appear here once your teacher has graded it and released it.</p></div>
+  {% endif %}
+  <a class="btn btn-ghost mt-5" href="{% url 'class_quizzes:mine' %}">Back to class quizzes</a>
+</div>
+{% endblock %}

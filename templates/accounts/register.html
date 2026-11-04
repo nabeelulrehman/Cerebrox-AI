@@ -5,6 +5,12 @@
   <div class="glass p-8">
     <h1 class="font-display text-2xl font-bold mb-1">Create your account</h1>
     <p class="text-sm mb-6" style="color:var(--txt-dim)">Free for students — start generating notes and quizzes.</p>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6" aria-label="Choose registration type">
+      <a href="{% url 'accounts:register' %}" aria-current="page"
+         class="btn btn-primary w-full text-center">Register as Student</a>
+      <a href="{% url 'teachers:register' %}"
+         class="btn w-full text-center border border-white/10">Register as Teacher</a>
+    </div>
     <form method="post" class="flex flex-col gap-4">
       {% csrf_token %}
       <div class="grid grid-cols-2 gap-3">

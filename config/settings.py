@@ -3,13 +3,26 @@ Django settings for CerebroX AI.
 """
 import os
 from pathlib import Path
-from dotenv import load_dotenv
+from dotenv import dotenv_values, load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-ENV_FILE = BASE_DIR / 'env'
-if not ENV_FILE.exists():
-    ENV_FILE = BASE_DIR / '.env'
-load_dotenv(dotenv_path=ENV_FILE, override=True)
+ENV_FILE = BASE_DIR / '.env.example'
+if not ENV_FILE.is_file() and (BASE_DIR / 'env').is_file():
+    ENV_FILE = BASE_DIR / 'env'
+
+
+def _normalize_gemini_api_key(value):
+    value = (value or '').strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+        value = value[1:-1].strip()
+    return ''.join(value.split())
+
+
+_PROCESS_GEMINI_API_KEY = _normalize_gemini_api_key(os.environ.get('GEMINI_API_KEY'))
+_DOTENV_GEMINI_API_KEY = _normalize_gemini_api_key(
+    dotenv_values(ENV_FILE).get('GEMINI_API_KEY')
+)
+load_dotenv(dotenv_path=ENV_FILE)
 
 SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-change-this-in-production')
 DEBUG = os.getenv('DEBUG', 'True') == 'True'
@@ -34,6 +47,12 @@ INSTALLED_APPS = [
     'apps.quizzes',
     'apps.analytics',
     'apps.dashboard',
+
+    # OPTIONAL teacher ecosystem (independent learning never depends on these)
+    'apps.teachers',
+    'apps.classrooms',
+    'apps.class_quizzes',
+    'apps.marketplace',
 ]
 
 MIDDLEWARE = [
@@ -86,7 +105,7 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 LANGUAGE_CODE = 'en-us'
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'Asia/Karachi'
 USE_I18N = True
 USE_TZ = True
 
@@ -130,9 +149,41 @@ LOGGING = {
 }
 
 # ---- AI configuration (apps/ai_engine) ----
-GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
+GEMINI_API_KEY = _PROCESS_GEMINI_API_KEY or _DOTENV_GEMINI_API_KEY
+GEMINI_API_KEY_SOURCE = (
+    'process environment' if _PROCESS_GEMINI_API_KEY
+    else 'environment file' if _DOTENV_GEMINI_API_KEY
+    else 'not configured'
+)
 GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-3.5-flash-lite')
-GEMINI_FALLBACK_MODEL = os.getenv('GEMINI_FALLBACK_MODEL', 'gemini-3.5-flash-lite')
+GEMINI_FALLBACK_MODEL = os.getenv('GEMINI_FALLBACK_MODEL', 'gemini-3.8-flash')
+GEMINI_REQUEST_TIMEOUT_MS = int(os.getenv('GEMINI_REQUEST_TIMEOUT_MS', '150000'))
+GEMINI_MAX_RETRIES = int(os.getenv('GEMINI_MAX_RETRIES', '2'))
+GEMINI_RETRY_BASE_SECONDS = float(os.getenv('GEMINI_RETRY_BASE_SECONDS', '1'))
+
+# ---- Teacher ecosystem (optional) ----
+# Public base URL used when building shareable quiz links (falls back to the request host).
+SITE_URL = os.getenv('SITE_URL', '').rstrip('/')
+QUIZ_QR_TTL_SECONDS = int(os.getenv('QUIZ_QR_TTL_SECONDS', '120'))
+QUIZ_SUBMIT_GRACE_SECONDS = int(os.getenv('QUIZ_SUBMIT_GRACE_SECONDS', '10'))
+
+# Teacher materials are stored OUTSIDE MEDIA_ROOT and served only through a permission-checked view.
+PRIVATE_MEDIA_ROOT = BASE_DIR / 'private_media'
+MATERIAL_MAX_MB = int(os.getenv('MATERIAL_MAX_MB', '100'))
+DATA_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024   # non-file request bodies
+
+# SMTP for emailing quiz links. With no EMAIL_HOST configured, mail is printed to the console
+# (nothing is actually delivered) — set the EMAIL_* variables for real delivery.
+EMAIL_HOST = os.getenv('EMAIL_HOST', '')
+if EMAIL_HOST:
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+    EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
+    EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
+    EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+    EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True') == 'True'
+else:
+    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'CerebroX AI <no-reply@localhost>')
 
 # ---- CerebroX business rules (apps/analytics) ----
 WEAK_TOPIC_THRESHOLDS = {

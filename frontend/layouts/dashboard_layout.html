@@ -1,2 +1,10 @@
 {% extends "base.html" %}
-{% block sidebar %}{% include "components/sidebar.html" %}{% endblock %}
+{% block sidebar %}
+  {% if user.is_admin_role %}
+    {% include "components/admin_sidebar.html" %}
+  {% elif user.is_teacher %}
+    {% include "components/teacher_sidebar.html" %}
+  {% else %}
+    {% include "components/sidebar.html" %}
+  {% endif %}
+{% endblock %}

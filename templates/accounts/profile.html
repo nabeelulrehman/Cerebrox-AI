@@ -10,8 +10,10 @@
       <div><label class="label">Last name</label>{{ form.last_name }}</div>
     </div>
     <div><label class="label">Email</label>{{ form.email }}</div>
-    <div><label class="label">Study level</label>{{ form.study_level }}</div>
-    <div><label class="label">If "Other", describe it</label>{{ form.study_level_custom }}</div>
+    {% if user.is_student %}
+      <div><label class="label">Study level</label>{{ form.study_level }}</div>
+      <div><label class="label">If "Other", describe it</label>{{ form.study_level_custom }}</div>
+    {% endif %}
     <div><label class="label">Bio</label>{{ form.bio }}</div>
     <div><label class="label">Avatar</label>{{ form.avatar }}</div>
     <button class="btn btn-primary w-max mt-2" type="submit">Save changes</button>
@@ -20,7 +22,11 @@
   <div class="grad-line my-6" style="height:1px;background:var(--line);"></div>
   <div class="flex gap-3">
     <a href="{% url 'accounts:password_change' %}" class="btn btn-ghost">Change password</a>
-    <a href="{% url 'learning:courses' %}" class="btn btn-ghost">Manage my courses</a>
+    {% if user.is_teacher %}
+      <a href="{% url 'teachers:profile_edit' %}" class="btn btn-ghost">Teacher profile</a>
+    {% elif user.is_student %}
+      <a href="{% url 'learning:courses' %}" class="btn btn-ghost">Manage my courses</a>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

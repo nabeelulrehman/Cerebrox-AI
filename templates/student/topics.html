@@ -14,7 +14,7 @@
         </a>
         <div class="flex gap-3 mt-3">
           <a href="{% url 'learning:topic_edit' t.id %}" class="text-xs grad-text">Edit</a>
-          <a href="{% url 'learning:topic_delete' t.id %}" class="text-xs" style="color:var(--bad)" onclick="return confirm('Delete this topic?')">Delete</a>
+          <form method="post" action="{% url 'learning:topic_delete' t.id %}" class="inline" onsubmit="return confirm('Delete this topic?')">{% csrf_token %}<button type="submit" class="text-xs" style="color:var(--bad)">Delete</button></form>
         </div>
       </div>
     {% empty %}

@@ -1,0 +1,13 @@
+{% extends "layouts/admin_layout.html" %}
+{% block title %}Payments &amp; reviews{% endblock %}
+{% block content %}
+<h1 class="font-display text-2xl font-bold mb-2">Payments awaiting confirmation</h1>
+<p class="text-sm mb-4" style="color:var(--txt-dim)">Confirm only after you have verified the money was received (no payment gateway is integrated). Confirming grants access.</p>
+{% for p in payments %}<div class="glass p-4 mb-3 flex justify-between items-center gap-3"><span class="text-sm">{{ p.reference }} — {{ p.student.username }} → {{ p.teacher.username }} — {{ p.amount }} — {% if p.resource %}{{ p.resource.title }}{% else %}{{ p.session.title }}{% endif %}</span>
+  <form method="post" action="{% url 'market:admin_payment' p.id %}" class="flex gap-2">{% csrf_token %}<button name="decision" value="confirm" class="btn btn-primary !py-1">Confirm</button><button name="decision" value="reject" class="btn btn-ghost !py-1">Reject</button></form></div>
+{% empty %}<p class="text-sm" style="color:var(--txt-faint)">None.</p>{% endfor %}
+<h2 class="font-display text-xl font-bold mt-8 mb-3">Reviews awaiting moderation</h2>
+{% for r in reviews %}<div class="glass p-4 mb-3 flex justify-between items-center gap-3"><span class="text-sm">{{ r.rating }}★ {{ r.student.username }} → {{ r.teacher.username }}: {{ r.comment }}</span>
+  <form method="post" action="{% url 'market:admin_review' r.id %}" class="flex gap-2">{% csrf_token %}<button name="decision" value="approve" class="btn btn-primary !py-1">Approve</button><button name="decision" value="reject" class="btn btn-ghost !py-1">Reject</button></form></div>
+{% empty %}<p class="text-sm" style="color:var(--txt-faint)">None.</p>{% endfor %}
+{% endblock %}

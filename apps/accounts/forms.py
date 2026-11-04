@@ -51,6 +51,17 @@ class RegisterForm(StyledFormMixin, UserCreationForm):
 class LoginForm(StyledFormMixin, AuthenticationForm):
     username = forms.CharField(label='Username or email')
 
+    def clean(self):
+        identifier = self.cleaned_data.get('username')
+        if identifier:
+            identifier = identifier.strip()
+            self.cleaned_data['username'] = identifier
+            if not User.objects.filter(username=identifier).exists():
+                email_user = User.objects.filter(email__iexact=identifier).first()
+                if email_user:
+                    self.cleaned_data['username'] = email_user.get_username()
+        return super().clean()
+
 
 class ProfileForm(StyledFormMixin, forms.ModelForm):
     class Meta:

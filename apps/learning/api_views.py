@@ -1,5 +1,5 @@
 from rest_framework import viewsets, mixins
-from rest_framework.permissions import IsAuthenticated
+from apps.accounts.permissions import IsStudentRole
 
 from .models import Course, Topic, AINote
 from .serializers import CourseSerializer, TopicSerializer, AINoteSerializer
@@ -8,7 +8,7 @@ from .serializers import CourseSerializer, TopicSerializer, AINoteSerializer
 class CourseViewSet(viewsets.ModelViewSet):
     """Each student only ever sees/manages their own courses."""
     serializer_class = CourseSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStudentRole]
 
     def get_queryset(self):
         return Course.objects.filter(student=self.request.user)
@@ -19,7 +19,7 @@ class CourseViewSet(viewsets.ModelViewSet):
 
 class TopicViewSet(viewsets.ModelViewSet):
     serializer_class = TopicSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStudentRole]
 
     def get_queryset(self):
         qs = Topic.objects.filter(course__student=self.request.user).select_related('course')
@@ -47,7 +47,7 @@ class TopicViewSet(viewsets.ModelViewSet):
 
 class AINoteViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
     serializer_class = AINoteSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStudentRole]
 
     def get_queryset(self):
         return AINote.objects.filter(student=self.request.user)

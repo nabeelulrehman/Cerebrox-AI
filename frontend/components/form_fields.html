@@ -1,0 +1,7 @@
+{% for field in form %}
+<div><label class="label">{{ field.label }}</label>{{ field }}
+  {% if field.help_text %}<p class="text-xs mt-1" style="color:var(--txt-faint)">{{ field.help_text }}</p>{% endif %}
+  {% for e in field.errors %}<p class="text-xs mt-1" style="color:var(--bad)">{{ e }}</p>{% endfor %}
+</div>
+{% endfor %}
+{% for e in form.non_field_errors %}<p class="text-xs" style="color:var(--bad)">{{ e }}</p>{% endfor %}

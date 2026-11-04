@@ -8,6 +8,9 @@ class Command(BaseCommand):
     help = 'Run a backend-side Gemini connectivity and response-parsing check.'
 
     def handle(self, *args, **options):
+        self.stdout.write(
+            f'Environment file: {settings.ENV_FILE.name} (found: {settings.ENV_FILE.is_file()})'
+        )
         key_detected = bool((settings.GEMINI_API_KEY or '').strip())
         self.stdout.write(f'GEMINI_API_KEY detected: {key_detected}')
         self.stdout.write(f'GEMINI_MODEL: {settings.GEMINI_MODEL}')

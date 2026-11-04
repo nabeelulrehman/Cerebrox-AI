@@ -5,7 +5,7 @@
 <p class="mb-6" style="color:var(--txt-dim)">Create a quiz from your course topics using your study level, difficulty, and question count.</p>
 
 <div class="glass p-6 max-w-2xl">
-  <form method="post" class="flex flex-col gap-4">
+  <form method="post" class="flex flex-col gap-4" data-quiz-generation-form>
     {% csrf_token %}
     <div>
       <label class="label">Course</label>
@@ -23,7 +23,11 @@
       <label class="label">Number of questions</label>
       {{ form.num_questions }}
     </div>
-    <button type="submit" class="btn btn-primary w-max mt-2">🧠 Generate Quiz</button>
+    <button type="submit" class="btn btn-primary w-max mt-2" data-quiz-submit>🧠 Generate Quiz</button>
+    <p class="hidden text-sm" style="color:var(--txt-dim)" data-quiz-status aria-live="polite">
+      Generating your quiz. This may take a little while.
+    </p>
   </form>
 </div>
 {% endblock %}
+{% block extra_js %}<script src="{% load static %}{% static 'js/quiz_generation.js' %}"></script>{% endblock %}

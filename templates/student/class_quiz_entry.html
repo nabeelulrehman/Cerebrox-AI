@@ -1,0 +1,24 @@
+{% extends "layouts/dashboard_layout.html" %}
+{% block title %}{% if enrollment_denied %}Quiz access denied{% else %}{{ quiz.title }}{% endif %}{% endblock %}
+{% block content %}
+{% if enrollment_denied %}
+<div class="max-w-xl glass p-6">
+  <h1 class="font-display text-xl font-bold mb-2">Quiz access denied</h1>
+  <div class="alert alert-error">{{ reason }}</div>
+</div>
+{% else %}
+<div class="max-w-xl glass p-6">
+  <p class="text-xs mb-1" style="color:var(--txt-faint)">{{ quiz.classroom.name }} &middot; teacher-assigned quiz</p>
+  <h1 class="font-display text-2xl font-bold mb-2">{{ quiz.title }}</h1>
+  <p class="text-sm mb-3" style="color:var(--txt-dim)">{{ quiz.description }}</p>
+  <ul class="text-sm mb-4 grid gap-1" style="color:var(--txt-dim)">
+    <li>Duration: {{ quiz.duration_minutes }} minutes (timed by the server)</li><li>Attempts allowed: {{ quiz.max_attempts }}</li>
+    {% if quiz.start_at %}<li>Opens: {{ quiz.start_at|date:"DATETIME_FORMAT" }}</li>{% endif %}
+    {% if quiz.end_at %}<li>Closes: {{ quiz.end_at|date:"DATETIME_FORMAT" }}</li>{% endif %}
+    {% if quiz.supervised %}<li><b>Supervised:</b> your teacher must scan a QR code on your screen before you can begin. Leaving the quiz tab or window pauses it until you are re-verified; the clock keeps running.</li>{% endif %}
+  </ul>
+  {% if reason %}<div class="alert alert-error">{{ reason }}</div>
+  {% else %}<form method="post" action="{% url 'class_quizzes:start' quiz.share_token %}">{% csrf_token %}<button class="btn btn-primary" type="submit">{% if open_attempt %}Resume attempt{% else %}Start quiz{% endif %}</button></form>{% endif %}
+</div>
+{% endif %}
+{% endblock %}

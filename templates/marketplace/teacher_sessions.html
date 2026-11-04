@@ -1,0 +1,7 @@
+{% extends "layouts/teacher_layout.html" %}
+{% block title %}Teaching sessions{% endblock %}
+{% block content %}
+<h1 class="font-display text-2xl font-bold mb-5">Teaching sessions</h1>
+<div class="grid md:grid-cols-2 gap-6"><div class="glass p-5">{% for s in sessions %}<div class="py-2 border-b text-sm" style="border-color:var(--line)">{{ s.title }} — {{ s.starts_at }} — {% if s.price %}{{ s.price }}{% else %}free{% endif %} ({{ s.bookings.count }}/{{ s.capacity }})</div>{% empty %}<p class="text-sm" style="color:var(--txt-faint)">No sessions.</p>{% endfor %}</div>
+<form method="post" class="glass p-5 grid gap-3 content-start">{% csrf_token %}{% include "components/form_fields.html" %}<button class="btn btn-primary">Create session</button></form></div>
+{% endblock %}

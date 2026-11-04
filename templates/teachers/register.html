@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Teacher registration — CerebroX AI{% endblock %}
+{% block content %}
+<div class="max-w-xl mx-auto py-10">
+  <div class="glass p-8">
+    <h1 class="font-display text-2xl font-bold mb-1">Register as a teacher</h1>
+    <p class="text-sm mb-6" style="color:var(--txt-dim)">Teacher accounts are reviewed by an administrator before they can create classes, quizzes or appear in the public directory. Students never need a teacher to use CerebroX AI.</p>
+    <form method="post" class="flex flex-col gap-4">
+      {% csrf_token %}
+      {% include "components/form_fields.html" %}
+      <button class="btn btn-primary w-full mt-2" type="submit">Submit for verification</button>
+    </form>
+    <p class="text-sm mt-5 text-center" style="color:var(--txt-dim)">
+      Want to study instead? <a href="{% url 'accounts:register' %}" class="grad-text font-medium">Register as Student</a>
+      &middot; <a href="{% url 'accounts:login' %}" class="grad-text font-medium">Login</a>
+    </p>
+  </div>
+</div>
+{% endblock %}

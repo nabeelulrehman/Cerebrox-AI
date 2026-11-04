@@ -17,7 +17,7 @@
           <a href="{% url 'learning:topics' c.id %}" class="text-xs grad-text">View Topics</a>
           <a href="{% url 'learning:topics' c.id %}" class="text-xs grad-text">Manage Topics</a>
           <a href="{% url 'learning:course_edit' c.id %}" class="text-xs grad-text">Edit Course</a>
-          <a href="{% url 'learning:course_delete' c.id %}" class="text-xs" style="color:var(--bad)" onclick="return confirm('Delete this course and all its topics?')">Delete</a>
+          <form method="post" action="{% url 'learning:course_delete' c.id %}" class="inline" onsubmit="return confirm('Delete this course and all its topics?')">{% csrf_token %}<button type="submit" class="text-xs" style="color:var(--bad)">Delete</button></form>
         </div>
       </div>
     {% empty %}

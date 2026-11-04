@@ -1,0 +1,32 @@
+{% extends "layouts/teacher_layout.html" %}
+{% block title %}Teacher dashboard — CerebroX AI{% endblock %}
+{% block content %}
+<h1 class="font-display text-2xl font-bold mb-1">Welcome, {{ user.first_name|default:user.username }}</h1>
+{% if not profile %}
+  <div class="glass p-6 mt-4">
+    <p class="font-display font-semibold mb-1">Teacher profile unavailable</p>
+    <p class="text-sm" style="color:var(--txt-dim)">Your account is signed in, but its teacher profile is missing. Please contact an administrator to restore access to teacher features.</p>
+  </div>
+{% elif not profile.is_approved %}
+  <div class="glass p-6 mt-4">
+    <p class="font-display font-semibold mb-1">Verification status: {{ profile.get_verification_status_display }}</p>
+    {% if profile.verification_status == 'pending' %}
+      <p class="text-sm" style="color:var(--txt-dim)">An administrator is reviewing your profile. Classes, quizzes and the public directory unlock once you are approved. You can improve your profile in the meantime.</p>
+    {% else %}
+      <p class="text-sm" style="color:var(--txt-dim)">{{ profile.verification_note|default:"Contact the administrator for details." }}</p>
+    {% endif %}
+    <a class="btn btn-ghost mt-4" href="{% url 'teachers:profile_edit' %}">Edit teacher profile</a>
+  </div>
+{% else %}
+  <div class="grid sm:grid-cols-3 gap-4 my-6">
+    {% include "components/stat_card.html" with label="Active classes" value=classes|length %}
+    {% include "components/stat_card.html" with label="Students enrolled" value=student_count %}
+    {% include "components/stat_card.html" with label="Join requests" value=pending_requests %}
+  </div>
+  <div class="glass p-6">
+    <div class="flex justify-between items-center mb-3"><h2 class="font-display font-semibold">Your classes</h2><a class="btn btn-primary" href="{% url 'classrooms:teacher_classes' %}">Manage classes</a></div>
+    {% for c in classes %}<a href="{% url 'classrooms:teacher_detail' c.id %}" class="block py-2 border-b" style="border-color:var(--line)">{{ c.name }} <span class="text-xs" style="color:var(--txt-faint)">{{ c.subject }}</span></a>
+    {% empty %}<p class="text-sm" style="color:var(--txt-faint)">No classes yet. Create one to invite students.</p>{% endfor %}
+  </div>
+{% endif %}
+{% endblock %}

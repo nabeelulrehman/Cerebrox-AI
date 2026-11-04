@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}{{ profile.user.get_full_name|default:profile.user.username }} — CerebroX AI{% endblock %}
+{% block content %}
+<div class="max-w-3xl mx-auto">
+  <a href="{% url 'teachers:directory' %}" class="text-sm grad-text">← Directory</a>
+  <div class="glass p-6 mt-3">
+    <h1 class="font-display text-2xl font-bold">{{ profile.user.get_full_name|default:profile.user.username }}</h1>
+    <p style="color:var(--txt-dim)">{{ profile.headline }}</p>
+    <p class="text-sm mt-3">{{ profile.bio|linebreaksbr }}</p>
+    <dl class="grid sm:grid-cols-2 gap-3 mt-5 text-sm">
+      <div><dt class="label">Subjects</dt><dd>{{ profile.subjects }}</dd></div>
+      <div><dt class="label">Experience</dt><dd>{{ profile.experience_years }} years</dd></div>
+      <div><dt class="label">Teaching mode</dt><dd>{{ profile.get_teaching_mode_display }}</dd></div>
+      <div><dt class="label">Availability</dt><dd>{{ profile.availability|default:"—" }}</dd></div>
+      <div class="sm:col-span-2"><dt class="label">Qualifications</dt><dd>{{ profile.qualifications|linebreaksbr }}</dd></div>
+    </dl>
+  </div>
+  {% if is_student %}<form method="post" action="{% url 'market:guidance_request' profile.id %}" class="glass p-5 mt-6 grid gap-2"><h2 class="font-display font-semibold">Ask for guidance{% if profile.offers_free_guidance %} <span class="pill pill-easy">free</span>{% endif %}</h2>{% csrf_token %}<textarea class="field" name="message" rows="3" maxlength="2000" required placeholder="What would you like help with?"></textarea><button class="btn btn-primary" type="submit">Send message</button></form>{% endif %}
+  <h2 class="font-display font-semibold mt-6 mb-2">Reviews {% if avg_rating %}<span class="text-sm font-normal">({{ avg_rating|floatformat:1 }}★)</span>{% endif %}</h2>
+  {% for r in reviews %}<div class="glass p-4 mb-2 text-sm">{{ r.rating }}★ — {{ r.comment }}</div>{% empty %}<p class="text-sm" style="color:var(--txt-faint)">No reviews yet.</p>{% endfor %}
+  {% if can_review %}<form method="post" action="{% url 'market:review_create' profile.id %}" class="glass p-4 mt-3 grid gap-2">{% csrf_token %}<select class="field" name="rating">{% for i in "54321" %}<option>{{ i }}</option>{% endfor %}</select><input class="field" name="comment" maxlength="1000" placeholder="Optional comment"><button class="btn btn-ghost" type="submit">Submit review (moderated)</button></form>{% endif %}
+  {% if classes %}
+  <h2 class="font-display font-semibold mt-6 mb-2">Classes</h2>
+  <p class="text-xs mb-2" style="color:var(--txt-faint)">Ask the teacher for a join code or invitation, then use “My Classes”.</p>
+  <div class="grid gap-3">{% for c in classes %}<div class="glass p-4"><p class="font-medium">{{ c.name }}</p><p class="text-xs" style="color:var(--txt-dim)">{{ c.subject }}</p></div>{% endfor %}</div>
+  {% endif %}
+</div>
+{% endblock %}
