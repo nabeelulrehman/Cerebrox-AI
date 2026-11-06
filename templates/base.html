@@ -1,6 +1,6 @@
 {% load static %}
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -9,20 +9,26 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{% static 'css/theme.css' %}">
+<link rel="stylesheet" href="{% static 'css/theme.css' %}?v=14">
+{% block extra_head %}{% endblock %}
 </head>
 <body>
   <div id="toast-root"></div>
-  {% include "components/navbar.html" %}
-  <div class="flex">
-    {% block sidebar %}{% endblock %}
-    <main class="flex-1 min-w-0 px-4 md:px-8 py-6 max-w-7xl mx-auto w-full">
-      {% include "components/alert.html" %}
-      {% block content %}{% endblock %}
-    </main>
+  <div class="site-shell">
+    {% include "components/navbar.html" %}
+    <div class="page-layout {% block page_layout_class %}{% endblock %}">
+      {% block sidebar %}{% endblock %}
+      <main class="page-main flex-1 min-w-0 px-4 md:px-8 py-6 max-w-7xl mx-auto w-full">
+        <div class="page-content">
+          {% include "components/alert.html" %}
+          {% block content %}{% endblock %}
+        </div>
+      </main>
+    </div>
   </div>
-  {% include "components/footer.html" %}
-  <script src="{% static 'js/main.js' %}"></script>
+  {% block footer %}
+    {% include "components/footer.html" with show_border=True %}
+  {% endblock %}
   {% block extra_js %}{% endblock %}
 </body>
 </html>

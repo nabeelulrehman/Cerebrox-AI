@@ -27,6 +27,26 @@ class CourseTests(TestCase):
         self.assertContains(resp, 'Biology')
         self.assertNotContains(resp, 'History')
 
+    def test_courses_page_uses_one_card_and_add_course_dialog(self):
+        Course.objects.create(student=self.student, name='Biology', icon='🧬')
+        c = Client(); c.login(username='stud1', password='StudPass123')
+        resp = c.get('/learning/courses/')
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'My Courses')
+        self.assertContains(resp, 'Add New Course')
+        self.assertContains(resp, 'course-dialog')
+        self.assertContains(resp, 'Biology')
+        self.assertNotContains(resp, 'grid md:grid-cols-3')
+        self.assertContains(c.get('/learning/courses/?add=1'), 'data-open-on-load="true"')
+
+    def test_invalid_course_form_reopens_dialog(self):
+        c = Client(); c.login(username='stud1', password='StudPass123')
+        resp = c.post('/learning/courses/', {'name': '', 'icon': '🧬'})
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'data-open-on-load="true"')
+
     def test_admin_panel_no_longer_creates_global_courses(self):
         c = Client(); c.login(username='admin1', password='AdminPass123')
         resp = c.get('/admin-panel/')

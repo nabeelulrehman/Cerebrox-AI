@@ -1,7 +1,12 @@
 from django import forms
+from django.contrib.auth import get_user_model
+from django.db.models import Q
 from apps.accounts.forms import StyledFormMixin
-from apps.classrooms.models import Classroom
+from apps.classrooms.models import Classroom, Enrollment
+from apps.teachers.models import TeacherProfile
 from .models import Resource, GuidanceRequest, TeachingSession, Review
+
+User = get_user_model()
 
 
 class ResourceForm(StyledFormMixin, forms.ModelForm):
@@ -38,6 +43,42 @@ class GuidanceForm(StyledFormMixin, forms.ModelForm):
     class Meta:
         model = GuidanceRequest
         fields = ('message',)
+
+
+class GuidanceComposeForm(StyledFormMixin, forms.Form):
+    recipient = forms.ModelChoiceField(queryset=User.objects.none(), label='To')
+    subject = forms.CharField(max_length=160)
+    message = forms.CharField(
+        max_length=2000,
+        widget=forms.Textarea(attrs={'rows': 4, 'placeholder': 'Write your message…'}),
+    )
+
+    def __init__(self, *args, user, **kwargs):
+        super().__init__(*args, **kwargs)
+        if user.is_student:
+            self.fields['recipient'].queryset = User.objects.filter(
+                teacher_profile__verification_status=TeacherProfile.Status.APPROVED,
+            ).order_by('first_name', 'username')
+        elif user.is_verified_teacher:
+            active_student_ids = Enrollment.objects.filter(
+                classroom__teacher=user,
+                status=Enrollment.Status.ACTIVE,
+            ).values_list('student_id', flat=True)
+            existing_student_ids = GuidanceRequest.objects.filter(
+                teacher=user,
+            ).values_list('student_id', flat=True)
+            self.fields['recipient'].queryset = User.objects.filter(
+                role=User.Role.STUDENT,
+            ).filter(
+                Q(pk__in=active_student_ids) | Q(pk__in=existing_student_ids),
+            ).distinct().order_by('first_name', 'username')
+
+
+class GuidanceReplyForm(StyledFormMixin, forms.Form):
+    message = forms.CharField(
+        max_length=2000,
+        widget=forms.Textarea(attrs={'rows': 2, 'placeholder': 'Write a reply…'}),
+    )
 
 
 class SessionForm(StyledFormMixin, forms.ModelForm):

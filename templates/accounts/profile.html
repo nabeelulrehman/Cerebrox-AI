@@ -1,5 +1,10 @@
 {% extends "layouts/dashboard_layout.html" %}
+{% load static %}
 {% block title %}Profile — CerebroX AI{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.css">
+<link rel="stylesheet" href="{% static 'css/profile_avatar_crop.css' %}?v=2">
+{% endblock %}
 {% block content %}
 <h1 class="font-display text-2xl font-bold mb-6">Your profile</h1>
 <div class="glass p-6 max-w-xl">
@@ -15,7 +20,13 @@
       <div><label class="label">If "Other", describe it</label>{{ form.study_level_custom }}</div>
     {% endif %}
     <div><label class="label">Bio</label>{{ form.bio }}</div>
-    <div><label class="label">Avatar</label>{{ form.avatar }}</div>
+    <div class="profile-avatar-field">
+      <label class="label" for="{{ form.avatar.id_for_label }}">Profile picture</label>
+      {{ form.avatar }}
+      {{ form.avatar.errors }}
+      <p class="profile-avatar-help">Choose a JPEG, PNG, or WebP image up to 5 MB. You can adjust a square crop before saving.</p>
+      <div class="profile-avatar-crop__error" role="alert" aria-live="polite" data-profile-crop-error hidden></div>
+    </div>
     <button class="btn btn-primary w-max mt-2" type="submit">Save changes</button>
   </form>
   <p class="text-xs mt-3" style="color:var(--txt-faint)">Changing your study level updates future AI-generated notes and quizzes — past ones keep the level they were generated at.</p>
@@ -29,4 +40,42 @@
     {% endif %}
   </div>
 </div>
+<dialog class="profile-avatar-crop" aria-labelledby="profile-avatar-crop-title" data-profile-crop-dialog>
+  <div class="profile-avatar-crop__panel">
+    <header class="profile-avatar-crop__header">
+      <div>
+        <h2 class="font-display text-lg font-semibold" id="profile-avatar-crop-title">Crop profile picture</h2>
+        <p>Drag the image or crop frame to compose a square avatar.</p>
+      </div>
+      <button class="profile-avatar-crop__close" type="button" aria-label="Close crop dialog" data-profile-crop-cancel>&times;</button>
+    </header>
+    <div class="profile-avatar-crop__workspace">
+      <div class="profile-avatar-crop__editor">
+        <img class="profile-avatar-crop__source" alt="Selected image to crop" data-profile-crop-source>
+      </div>
+      <aside class="profile-avatar-crop__preview-panel" aria-label="Cropped picture preview">
+        <h3>Final preview</h3>
+        <div class="profile-avatar-crop__preview" data-profile-crop-preview>
+          <canvas width="128" height="128" role="img" aria-label="Preview of cropped profile picture" data-profile-crop-preview-canvas></canvas>
+        </div>
+        <p>This square will appear in your header avatar.</p>
+      </aside>
+    </div>
+    <div class="profile-avatar-crop__controls">
+      <span>Adjust image zoom</span>
+      <div>
+        <button class="btn btn-ghost" type="button" aria-label="Zoom out" data-profile-crop-zoom-out>−</button>
+        <button class="btn btn-ghost" type="button" aria-label="Zoom in" data-profile-crop-zoom-in>+</button>
+      </div>
+    </div>
+    <div class="profile-avatar-crop__actions">
+      <button class="btn btn-ghost" type="button" data-profile-crop-cancel>Cancel</button>
+      <button class="btn btn-primary" type="button" data-profile-crop-confirm>Crop &amp; Save</button>
+    </div>
+  </div>
+</dialog>
+{% endblock %}
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.js" defer></script>
+<script src="{% static 'js/profile_avatar_crop.js' %}?v=3" defer></script>
 {% endblock %}

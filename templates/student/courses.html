@@ -1,48 +1,90 @@
 {% extends "layouts/dashboard_layout.html" %}
+{% load static %}
 {% block title %}My Courses — CerebroX AI{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'css/student_courses.css' %}?v=3">
+{% endblock %}
 {% block content %}
-<h1 class="font-display text-2xl font-bold mb-1">My Courses</h1>
-<p class="mb-6" style="color:var(--txt-dim)">Add the courses you personally want to study and practice — nothing here is predefined.</p>
+<section class="courses-card glass" aria-labelledby="courses-title">
+  <header class="courses-card__header">
+    <div>
+      <h1 id="courses-title" class="font-display text-2xl font-bold">My Courses</h1>
+      <p class="mt-1 text-sm" style="color:var(--txt-dim)">Your courses and topics, all in one place.</p>
+    </div>
+    <button class="btn btn-primary courses-add-button" type="button" data-open-course-dialog
+            data-add-url="{% url 'learning:courses' %}" data-edit-mode="{% if editing %}true{% else %}false{% endif %}">
+      <span aria-hidden="true">+</span> Add New Course
+    </button>
+  </header>
 
-<div class="grid md:grid-cols-3 gap-6">
-  <div class="md:col-span-2 grid sm:grid-cols-2 gap-4">
+  <div class="courses-list">
     {% for c in courses %}
-      <div class="glass p-5">
-        <a href="{% url 'learning:topics' c.id %}" class="block">
-          <p class="text-2xl">{{ c.icon }}</p>
-          <p class="font-display font-semibold mt-2">{{ c.name }}</p>
-          <p class="text-sm mt-1" style="color:var(--txt-dim)">{{ c.topic_count }} topics</p>
-        </a>
-        <div class="flex flex-wrap gap-3 mt-3">
-          <a href="{% url 'learning:topics' c.id %}" class="text-xs grad-text">View Topics</a>
-          <a href="{% url 'learning:topics' c.id %}" class="text-xs grad-text">Manage Topics</a>
-          <a href="{% url 'learning:course_edit' c.id %}" class="text-xs grad-text">Edit Course</a>
-          <form method="post" action="{% url 'learning:course_delete' c.id %}" class="inline" onsubmit="return confirm('Delete this course and all its topics?')">{% csrf_token %}<button type="submit" class="text-xs" style="color:var(--bad)">Delete</button></form>
+      <article class="course-item">
+        <div class="course-item__main">
+          <span class="course-item__icon" aria-hidden="true">{{ c.icon }}</span>
+          <span class="course-item__details">
+            <span class="course-item__name">{{ c.name }}</span>
+            <span class="course-item__meta">{{ c.topic_count }} topic{{ c.topic_count|pluralize }}{% if c.description %}<span class="course-item__description"> · {{ c.description }}</span>{% endif %}</span>
+          </span>
         </div>
-      </div>
+        <div class="course-item__actions">
+          <a href="{% url 'learning:course_edit' c.id %}" class="course-item__action">Edit</a>
+          <form method="post" action="{% url 'learning:course_delete' c.id %}" onsubmit="return confirm('Delete this course and all its topics?')">
+            {% csrf_token %}
+            <button type="submit" class="course-item__action course-item__action--delete">Delete</button>
+          </form>
+        </div>
+      </article>
     {% empty %}
-      <p style="color:var(--txt-faint)" class="sm:col-span-2">You haven't added any courses yet — use the form to add your first one.</p>
+      <div class="courses-empty">
+        <span class="courses-empty__icon" aria-hidden="true">📚</span>
+        <p class="font-semibold">No courses yet</p>
+        <p class="text-sm mt-1" style="color:var(--txt-faint)">Add a course to start organizing your learning.</p>
+      </div>
     {% endfor %}
   </div>
+</section>
 
-  <div class="glass p-5 h-max">
-    <h2 class="font-display font-semibold mb-4">{% if editing %}Edit course{% else %}Add a course{% endif %}</h2>
-    <form method="post" action="{% if editing %}{% url 'learning:course_edit' editing.id %}{% else %}{% url 'learning:courses' %}{% endif %}" class="flex flex-col gap-3">
+<dialog class="course-dialog" aria-labelledby="course-dialog-title"
+        data-open-on-load="{% if editing or form.errors or open_add_dialog %}true{% else %}false{% endif %}">
+  <div class="course-dialog__panel">
+    <header class="course-dialog__header">
+      <h2 id="course-dialog-title" class="font-display text-xl font-bold">{% if editing %}Edit Course{% else %}Add New Course{% endif %}</h2>
+      <button class="course-dialog__close" type="button" aria-label="Close dialog" data-close-course-dialog>&times;</button>
+    </header>
+
+    <form method="post" action="{% if editing %}{% url 'learning:course_edit' editing.id %}{% else %}{% url 'learning:courses' %}{% endif %}" class="course-form">
       {% csrf_token %}
-      <div><label class="label">Name</label>{{ form.name }}</div>
-      <div><label class="label">Icon / emoji</label>{{ form.icon }}</div>
-      <div><label class="label">Description</label>{{ form.description }}</div>
+      {{ form.non_field_errors }}
       <div>
-        <label class="label">Add topics</label>
+        <label class="label" for="{{ form.name.id_for_label }}">Name</label>
+        {{ form.name }}
+        {{ form.name.errors }}
+      </div>
+      <div>
+        <label class="label" for="{{ form.icon.id_for_label }}">Icon / emoji</label>
+        {{ form.icon }}
+        {{ form.icon.errors }}
+      </div>
+      <div>
+        <label class="label" for="{{ form.description.id_for_label }}">Description</label>
+        {{ form.description }}
+        {{ form.description.errors }}
+      </div>
+      <div>
+        <label class="label" for="{{ form.topics_raw.id_for_label }}">Add topics</label>
         {{ form.topics_raw }}
+        {{ form.topics_raw.errors }}
         <p class="text-xs mt-1" style="color:var(--txt-faint)">Add one topic per line or separate with commas.</p>
       </div>
-      <button class="btn btn-primary mt-2" type="submit">{% if editing %}Save changes{% else %}Add course{% endif %}</button>
+      <div class="course-form__actions">
+        <button class="btn btn-ghost" type="button" data-close-course-dialog>Cancel</button>
+        <button class="btn btn-primary" type="submit">{% if editing %}Save Changes{% else %}Add Course{% endif %}</button>
+      </div>
     </form>
   </div>
-</div>
-
-{% if courses %}
-<a href="{% url 'dashboard:home' %}" class="btn btn-ghost mt-8 w-max">Continue to dashboard →</a>
-{% endif %}
+</dialog>
+{% endblock %}
+{% block extra_js %}
+<script src="{% static 'js/student_courses.js' %}?v=1" defer></script>
 {% endblock %}

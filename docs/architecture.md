@@ -49,5 +49,5 @@ so one student's content is never visible to another. See
 - Performance/weak-topics are **calculated on read**, not stored, to avoid duplicate/stale data (per scope §21), and are always scoped to the requesting student.
 - Study Level lives on the `User` model and is read at generation time — changing it in Profile affects all *future* AI notes/quizzes; past `AINote`/`Quiz` rows keep the level they were generated with (an intentional historical snapshot, not a live reference).
 - AI is used only for notes, MCQs, and optional recommendation phrasing — scoring, weak-topic detection, and dashboard stats are pure backend logic (scope §18), keeping API costs low.
-- The demo frontend HTML file was used as the **visual reference** (glass/dark theme, layout, quiz UI) and rebuilt as real Django templates rather than ported as a client-side SPA, to match the server-rendered project structure.
+- The demo frontend HTML file was used as the **visual reference** (glass styling, layout, quiz UI) and rebuilt as real Django templates rather than ported as a client-side SPA, to match the server-rendered project structure.
 - The custom admin panel intentionally no longer creates/edits Subjects/Topics/Questions — that content is 100% student-owned now. Django's built-in `/django-admin/` still has full model access for a superuser if needed for support/debugging.

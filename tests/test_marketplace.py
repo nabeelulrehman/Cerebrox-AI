@@ -11,7 +11,9 @@ from django.utils import timezone
 
 from apps.classrooms.models import Enrollment
 from apps.marketplace import services
-from apps.marketplace.models import Resource, Payment, TeachingSession, SessionBooking, Review
+from apps.marketplace.models import (
+    GuidanceMessage, GuidanceRequest, Resource, Payment, TeachingSession, SessionBooking, Review,
+)
 from apps.teachers.models import TeacherProfile
 from tests.test_teacher_ecosystem import make_student, make_teacher, make_class, enroll, login, User, PW
 
@@ -44,6 +46,15 @@ class MarketBase(TestCase):
 
 
 class MaterialAccessTests(MarketBase):
+    def test_resources_page_uses_the_shared_student_sidebar_layout(self):
+        response = login(self.student).get('/market/resources/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="sidebar"')
+        self.assertContains(response, 'Shared Study Materials')
+        self.assertContains(response, 'Study resources from verified teachers')
+        self.assertContains(response, 'page-layout has-sidebar student-page-layout')
+
     def test_draft_class_public_and_paid_access_rules(self):
         draft = self.upload('draft')
         shared = self.upload('classes', classrooms=[self.cl.id])
@@ -87,6 +98,124 @@ class MaterialAccessTests(MarketBase):
         r = login(self.student).post('/market/teach/resources/', {
             'title': 'x', 'visibility': 'public', 'file': SimpleUploadedFile('a.pdf', b'x')})
         self.assertEqual(r.status_code, 403)
+
+
+class GuidanceConversationTests(MarketBase):
+    def test_student_sends_and_teacher_replies_in_persisted_chronological_thread(self):
+        student_client = login(self.student)
+        page = student_client.get('/market/guidance/')
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, 'New Message')
+        self.assertContains(page, 'data-guidance-compose-dialog')
+        self.assertContains(page, 'data-guidance-compose-open')
+        self.assertContains(page, 'data-guidance-compose-close')
+        page_html = page.content.decode()
+        self.assertLess(page_html.index('guidance-page__header'), page_html.index('guidance-compose-launch'))
+        self.assertLess(page_html.index('guidance-compose-launch'), page_html.index('guidance-conversations'))
+        self.assertContains(page, self.teacher.username)
+
+        response = student_client.post('/market/guidance/send/', {
+            'recipient': self.teacher.pk,
+            'subject': 'Help with physics',
+            'message': 'I need help with motion.',
+        })
+        conversation = GuidanceRequest.objects.get()
+        self.assertRedirects(
+            response,
+            f'/market/guidance/#conversation-{conversation.pk}',
+            fetch_redirect_response=False,
+        )
+        self.assertEqual(conversation.started_by, self.student)
+        self.assertEqual(conversation.message, 'I need help with motion.')
+
+        teacher_client = login(self.teacher)
+        inbox = teacher_client.get('/market/teach/inbox/')
+        self.assertContains(inbox, 'Help with physics')
+        self.assertContains(inbox, 'I need help with motion.')
+        self.assertContains(inbox, 'type="text" maxlength="2000" required')
+        self.assertContains(inbox, '>Send</button>')
+        self.assertNotContains(inbox, 'guidance-reply__toggle')
+        reply_response = teacher_client.post(
+            f'/market/guidance/conversations/{conversation.pk}/reply/',
+            {'message': 'Start by drawing a velocity diagram.'},
+            follow=True,
+        )
+        self.assertEqual(reply_response.status_code, 200)
+        self.assertContains(reply_response, 'Your reply was sent.')
+        reply = GuidanceMessage.objects.get(conversation=conversation)
+        self.assertEqual(reply.sender, self.teacher)
+        self.assertEqual(reply.body, 'Start by drawing a velocity diagram.')
+        self.assertEqual(conversation.__class__.objects.get(pk=conversation.pk).status, GuidanceRequest.Status.ANSWERED)
+
+        thread = student_client.get('/market/guidance/').content.decode()
+        self.assertLess(thread.index('I need help with motion.'), thread.index('Start by drawing a velocity diagram.'))
+        self.assertIn(self.teacher.get_full_name() or self.teacher.username, thread)
+
+    def test_teacher_can_start_a_thread_with_an_active_student_and_student_can_reply(self):
+        enroll(self.student, self.cl)
+        teacher_client = login(self.teacher)
+        page = teacher_client.get('/market/guidance/')
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, self.student.username)
+
+        response = teacher_client.post('/market/guidance/send/', {
+            'recipient': self.student.pk,
+            'subject': 'Class follow-up',
+            'message': 'Here are the topics to review.',
+        })
+        conversation = GuidanceRequest.objects.get()
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(conversation.started_by, self.teacher)
+        self.assertEqual(conversation.student, self.student)
+        self.assertEqual(conversation.teacher, self.teacher)
+
+        student_client = login(self.student)
+        self.assertContains(student_client.get('/market/guidance/'), 'Here are the topics to review.')
+        response = student_client.post(
+            f'/market/guidance/conversations/{conversation.pk}/reply/',
+            {'message': 'Thank you, I will review them.'},
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Your reply was sent.')
+        reply = GuidanceMessage.objects.get(conversation=conversation)
+        self.assertEqual(reply.sender, self.student)
+        self.assertEqual(conversation.__class__.objects.get(pk=conversation.pk).status, GuidanceRequest.Status.OPEN)
+
+    def test_recipients_and_replies_are_limited_to_authorized_participants(self):
+        conversation = GuidanceRequest.objects.create(
+            student=self.student,
+            teacher=self.teacher,
+            subject='Private question',
+            message='Private content',
+            started_by=self.student,
+        )
+        outsider = make_student('outsider')
+        outsider_client = login(outsider)
+        self.assertEqual(
+            outsider_client.post(
+                f'/market/guidance/conversations/{conversation.pk}/reply/',
+                {'message': 'Unauthorized reply'},
+            ).status_code,
+            404,
+        )
+        other_teacher = make_teacher('other-teacher')
+        self.assertEqual(
+            login(other_teacher).post(
+                f'/market/guidance/conversations/{conversation.pk}/reply/',
+                {'message': 'Unauthorized reply'},
+            ).status_code,
+            404,
+        )
+        invalid_recipient = login(self.teacher).post('/market/guidance/send/', {
+            'recipient': outsider.pk,
+            'subject': 'Not allowed',
+            'message': 'This should not be sent.',
+        })
+        self.assertEqual(invalid_recipient.status_code, 400)
+        self.assertContains(invalid_recipient, 'data-guidance-compose-invalid', status_code=400)
+        self.assertEqual(GuidanceRequest.objects.count(), 1)
+        self.assertFalse(GuidanceMessage.objects.exists())
 
 
 class PaymentTests(MarketBase):

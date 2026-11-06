@@ -1,22 +1,44 @@
-<aside id="sidebar" class="hidden md:block w-60 shrink-0 border-r px-4 py-6" style="border-color:var(--line);">
-  <nav class="flex flex-col gap-1">
-    <a href="{% url 'dashboard:home' %}" class="navlink {% if request.resolver_match.view_name == 'dashboard:home' %}active{% endif %}">📊 Dashboard</a>
-    <a href="{% url 'learning:courses' %}" class="navlink {% if request.resolver_match.view_name == 'learning:courses' %}active{% endif %}">📚 My Courses</a>
-    <a href="{% url 'learning:notes_dashboard' %}" class="navlink {% if request.resolver_match.view_name == 'learning:notes_dashboard' %}active{% endif %}">📝 Notes</a>
-    <a href="{% url 'quizzes:dashboard_generate' %}" class="navlink {% if request.resolver_match.view_name == 'quizzes:dashboard_generate' %}active{% endif %}">🧠 Quiz</a>
-    <a href="{% url 'analytics:performance' %}" class="navlink">📈 Performance</a>
-    <a href="{% url 'analytics:recommendations' %}" class="navlink">💡 Recommendations</a>
-    <a href="{% url 'accounts:profile' %}" class="navlink">👤 Profile</a>
-  </nav>
-  <div class="mt-6 pt-4 border-t" style="border-color:var(--line)">
-    <p class="text-xs uppercase tracking-wide mb-2 px-1" style="color:var(--txt-faint)">Teacher-assisted <span class="normal-case">(optional)</span></p>
-    <nav class="flex flex-col gap-1">
-      <a href="{% url 'teachers:directory' %}" class="navlink">🔎 Find Teachers</a>
-      <a href="{% url 'classrooms:my_classes' %}" class="navlink">🏫 My Classes</a>
-      <a href="{% url 'class_quizzes:mine' %}" class="navlink">📋 Teacher-Assigned Quizzes</a>
-      <a href="{% url 'market:resources' %}" class="navlink">📁 Shared Study Materials</a>
-      <a href="{% url 'market:sessions' %}" class="navlink">🗓 Teaching Sessions</a>
-      <a href="{% url 'market:my_guidance' %}" class="navlink">✉️ My Messages</a>
-    </nav>
+{% load static %}
+{% with current_view=request.resolver_match.view_name %}
+<aside id="sidebar" class="student-sidebar hidden md:block w-60 shrink-0 border-r px-4 py-6" style="border-color:var(--line);">
+  <div class="student-sidebar__groups">
+    <section class="student-sidebar__group" aria-labelledby="ai-learning-heading">
+      <h2 class="student-sidebar__heading" id="ai-learning-heading">
+        <span class="student-sidebar__heading-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M12 3.5 13.7 9l5.5 1.7-5.5 1.8-1.7 5.5-1.8-5.5-5.5-1.8L10.2 9 12 3.5Z"/><path d="m19 14 .9 2.6 2.6.9-2.6.9L19 21l-.9-2.6-2.6-.9 2.6-.9L19 14Z"/></svg>
+        </span>
+        <span>AI LEARNING</span>
+      </h2>
+      <nav class="student-sidebar__links" aria-label="AI Learning">
+        <a href="{% url 'dashboard:home' %}" class="navlink {% if current_view == 'dashboard:home' %}active{% endif %}">📊 Dashboard</a>
+        <a href="{% url 'learning:courses' %}" class="navlink {% if current_view == 'learning:courses' or current_view == 'learning:course_edit' or current_view == 'learning:course_delete' or current_view == 'learning:topics' or current_view == 'learning:topic_edit' or current_view == 'learning:topic_delete' or current_view == 'learning:topic_detail' %}active{% endif %}">📚 My Courses</a>
+        <a href="{% url 'learning:notes_dashboard' %}" class="navlink {% if current_view == 'learning:notes_dashboard' or current_view == 'learning:notes_generate' or current_view == 'learning:notes_generate_stream' or current_view == 'learning:notes_view' %}active{% endif %}">📝 AI Notes</a>
+        <a href="{% url 'quizzes:dashboard_generate' %}" class="navlink {% if current_view == 'quizzes:dashboard_generate' or current_view == 'quizzes:generate' or current_view == 'quizzes:take' or current_view == 'quizzes:submit' or current_view == 'quizzes:result' or current_view == 'quizzes:history' %}active{% endif %}">🧠 AI Quiz</a>
+        <a href="{% url 'analytics:performance' %}" class="navlink {% if current_view == 'analytics:performance' %}active{% endif %}">📈 Performance</a>
+        <a href="{% url 'analytics:recommendations' %}" class="navlink {% if current_view == 'analytics:recommendations' %}active{% endif %}">💡 Recommendations</a>
+      </nav>
+    </section>
+
+    <section class="student-sidebar__group" aria-labelledby="teacher-assisted-heading">
+      <h2 class="student-sidebar__heading student-sidebar__heading--teacher" id="teacher-assisted-heading">
+        <span class="student-sidebar__heading-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="m2.5 9 9.5-5 9.5 5-9.5 5-9.5-5Z"/><path d="M6.5 11.2v5.1c3.4 2.6 7.6 2.6 11 0v-5.1"/><path d="M21.5 9v5"/></svg>
+        </span>
+        <span>TEACHER ASSISTED</span>
+      </h2>
+      <nav class="student-sidebar__links" aria-label="Teacher Assisted">
+        <a href="{% url 'teachers:directory' %}" class="navlink {% if current_view == 'teachers:directory' or current_view == 'teachers:public_profile' %}active{% endif %}">🔎 Find Teachers</a>
+        <a href="{% url 'classrooms:my_classes' %}" class="navlink {% if current_view == 'classrooms:my_classes' or current_view == 'classrooms:join' or current_view == 'classrooms:respond_invite' or current_view == 'classrooms:leave' or current_view == 'classrooms:toggle_share' or current_view == 'classrooms:student_class' %}active{% endif %}">🏫 My Classes</a>
+        <a href="{% url 'class_quizzes:mine' %}" class="navlink {% if current_view == 'class_quizzes:mine' or current_view == 'class_quizzes:take' or current_view == 'class_quizzes:status' or current_view == 'class_quizzes:save' or current_view == 'class_quizzes:event' or current_view == 'class_quizzes:submit' or current_view == 'class_quizzes:result' or current_view == 'class_quizzes:entry' or current_view == 'class_quizzes:start' %}active{% endif %}">📋 Teacher-Assigned Quizzes</a>
+        <a href="{% url 'market:resources' %}" class="navlink {% if current_view == 'market:resources' or current_view == 'market:download' or current_view == 'market:buy' %}active{% endif %}">📁 Shared Study Materials</a>
+        <a href="{% url 'market:sessions' %}" class="navlink {% if current_view == 'market:sessions' or current_view == 'market:session_book' %}active{% endif %}">🗓 Teaching Sessions</a>
+        <a href="{% url 'market:my_guidance' %}" class="navlink {% if current_view == 'market:my_guidance' or current_view == 'market:guidance_request' or current_view == 'market:review_create' %}active{% endif %}">✉️ My Messages</a>
+      </nav>
+    </section>
   </div>
+  <nav class="student-sidebar__links" aria-label="Account">
+    <a href="{% url 'accounts:profile' %}" class="navlink {% if current_view == 'accounts:profile' or current_view == 'accounts:password_change' %}active{% endif %}">👤 Profile</a>
+  </nav>
 </aside>
+{% endwith %}
+<link rel="stylesheet" href="{% static 'css/student_sidebar.css' %}?v=9">

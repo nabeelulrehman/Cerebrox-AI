@@ -89,13 +89,28 @@ class GuidanceRequest(models.Model):
 
     student = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='guidance_requests', on_delete=models.CASCADE)
     teacher = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='guidance_inbox', on_delete=models.CASCADE)
+    subject = models.CharField(max_length=160, blank=True, default='Guidance request')
     message = models.TextField(max_length=2000)
     reply = models.TextField(blank=True, max_length=2000)
+    started_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, related_name='started_guidance_requests',
+        null=True, blank=True, on_delete=models.SET_NULL,
+    )
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.OPEN)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ['-created_at']
+
+
+class GuidanceMessage(models.Model):
+    conversation = models.ForeignKey(GuidanceRequest, related_name='messages', on_delete=models.CASCADE)
+    sender = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='guidance_messages', on_delete=models.CASCADE)
+    body = models.TextField(max_length=2000)
+    sent_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['sent_at', 'pk']
 
 
 class TeachingSession(models.Model):

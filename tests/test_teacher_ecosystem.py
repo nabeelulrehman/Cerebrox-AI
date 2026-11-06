@@ -181,11 +181,34 @@ class TeacherAccountTests(TestCase):
         make_teacher('good', approved=True)
         make_teacher('pending', approved=False)
         html = Client().get('/teachers/directory/').content.decode()
+        self.assertIn('id="sidebar"', html)
+        self.assertIn('id="teacher-assisted-heading"', html)
+        self.assertIn('class="page-layout has-sidebar student-page-layout"', html)
+        self.assertNotIn('<footer', html)
         self.assertIn('good', html)
         self.assertNotIn('pending', html)
         self.assertNotIn('good@x.com', html)
         pid = TeacherProfile.objects.get(user__username='pending').id
         self.assertEqual(Client().get(f'/teachers/directory/{pid}/').status_code, 404)
+
+    def test_teacher_dashboard_keeps_footer_separator(self):
+        response = login(make_teacher()).get('/teachers/dashboard/')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('<footer class="border-t mt-16"', response.content.decode())
+
+    def test_student_pages_do_not_render_footer_or_footer_clearance_script(self):
+        client = login(make_student())
+        dashboard = client.get('/dashboard/')
+        self.assertEqual(dashboard.status_code, 200)
+        dashboard_html = dashboard.content.decode()
+        self.assertNotIn('<footer', dashboard_html)
+        self.assertNotIn('updateFooterClearance', dashboard_html)
+
+        courses = client.get('/learning/courses/')
+        self.assertEqual(courses.status_code, 200)
+        courses_html = courses.content.decode()
+        self.assertNotIn('<footer', courses_html)
+        self.assertNotIn('updateFooterClearance', courses_html)
 
     def test_teacher_lands_on_teacher_dashboard_not_student_dashboard(self):
         c = login(make_teacher())

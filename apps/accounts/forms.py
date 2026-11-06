@@ -64,9 +64,34 @@ class LoginForm(StyledFormMixin, AuthenticationForm):
 
 
 class ProfileForm(StyledFormMixin, forms.ModelForm):
+    MAX_AVATAR_SIZE = 5 * 1024 * 1024
+    ALLOWED_AVATAR_FORMATS = {'JPEG', 'PNG', 'WEBP'}
+    avatar = forms.ImageField(
+        required=False,
+        widget=forms.ClearableFileInput(attrs={
+            'accept': 'image/jpeg,image/png,image/webp',
+            'data-profile-avatar-input': '',
+        }),
+    )
+
     class Meta:
         model = User
         fields = ('first_name', 'last_name', 'email', 'bio', 'avatar', 'study_level', 'study_level_custom')
+
+    def clean_avatar(self):
+        avatar = self.cleaned_data.get('avatar')
+        uploaded_file = self.files.get(self.add_prefix('avatar'))
+        if not uploaded_file:
+            return avatar
+
+        if uploaded_file.size > self.MAX_AVATAR_SIZE:
+            raise forms.ValidationError('Profile images must be 5 MB or smaller.')
+
+        image_format = getattr(getattr(avatar, 'image', None), 'format', None)
+        if image_format not in self.ALLOWED_AVATAR_FORMATS:
+            raise forms.ValidationError('Upload a JPEG, PNG, or WebP image.')
+
+        return avatar
 
     def clean(self):
         cleaned = super().clean()

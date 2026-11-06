@@ -1,4 +1,10 @@
+from io import BytesIO
+import tempfile
+
+from PIL import Image
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, Client
+from django.test.utils import override_settings
 from django.contrib.auth import get_user_model
 
 from apps.teachers.models import TeacherProfile
@@ -7,7 +13,174 @@ User = get_user_model()
 TEACHER_PASSWORD = 'StrongPass123'
 
 
+def image_upload(name, image_format, size=(24, 24), trailing_bytes=b''):
+    buffer = BytesIO()
+    Image.new('RGB', size, 'purple').save(buffer, format=image_format)
+    return SimpleUploadedFile(
+        name,
+        buffer.getvalue() + trailing_bytes,
+        content_type=f'image/{image_format.lower()}',
+    )
+
+
 class AuthenticationTests(TestCase):
+    def test_profile_crop_interface_uses_existing_avatar_upload_field(self):
+        student = User.objects.create_user(
+            'crop-student', 'crop-student@example.com', TEACHER_PASSWORD,
+        )
+        client = Client()
+        client.force_login(student)
+        html = client.get('/accounts/profile/').content.decode()
+
+        self.assertIn('name="avatar"', html)
+        self.assertIn('accept="image/jpeg,image/png,image/webp"', html)
+        self.assertIn('data-profile-crop-dialog', html)
+        self.assertIn('data-profile-crop-preview', html)
+        self.assertIn('data-profile-crop-preview-canvas', html)
+        self.assertIn('data-profile-crop-zoom-in', html)
+        self.assertIn('data-profile-crop-zoom-out', html)
+        self.assertIn('Crop &amp; Save', html)
+        self.assertIn('cropperjs@1.6.2', html)
+        self.assertIn('/static/js/profile_avatar_crop.js?v=3', html)
+
+    def test_profile_rejects_unsupported_and_oversized_avatars_without_replacing_current(self):
+        with tempfile.TemporaryDirectory() as media_root:
+            with override_settings(MEDIA_ROOT=media_root):
+                student = User.objects.create_user(
+                    'crop-validation', 'crop-validation@example.com', TEACHER_PASSWORD,
+                )
+                student.avatar.save('existing.png', image_upload('existing.png', 'PNG'), save=True)
+                existing_name = student.avatar.name
+                client = Client()
+                client.force_login(student)
+                profile_data = {
+                    'first_name': 'Crop',
+                    'last_name': 'Validation',
+                    'email': student.email,
+                    'bio': '',
+                    'study_level': 'undergraduate',
+                    'study_level_custom': '',
+                }
+
+                unsupported = client.post(
+                    '/accounts/profile/',
+                    {**profile_data, 'avatar': image_upload('animated.gif', 'GIF')},
+                )
+                self.assertEqual(unsupported.status_code, 200)
+                self.assertFormError(
+                    unsupported.context['form'],
+                    'avatar',
+                    'Upload a JPEG, PNG, or WebP image.',
+                )
+                student.refresh_from_db()
+                self.assertEqual(student.avatar.name, existing_name)
+
+                oversized = client.post(
+                    '/accounts/profile/',
+                    {
+                        **profile_data,
+                        'avatar': image_upload(
+                            'too-large.jpg',
+                            'JPEG',
+                            trailing_bytes=b'x' * (5 * 1024 * 1024),
+                        ),
+                    },
+                )
+                self.assertEqual(oversized.status_code, 200)
+                self.assertFormError(
+                    oversized.context['form'],
+                    'avatar',
+                    'Profile images must be 5 MB or smaller.',
+                )
+                student.refresh_from_db()
+                self.assertEqual(student.avatar.name, existing_name)
+
+    def test_profile_accepts_and_saves_square_cropped_avatar(self):
+        with tempfile.TemporaryDirectory() as media_root:
+            with override_settings(MEDIA_ROOT=media_root):
+                student = User.objects.create_user(
+                    'cropped-student', 'cropped-student@example.com', TEACHER_PASSWORD,
+                )
+                client = Client()
+                client.force_login(student)
+                response = client.post('/accounts/profile/', {
+                    'first_name': 'Cropped',
+                    'last_name': 'Student',
+                    'email': student.email,
+                    'bio': '',
+                    'study_level': 'undergraduate',
+                    'study_level_custom': '',
+                    'avatar': image_upload('portrait-cropped.jpg', 'JPEG', size=(512, 512)),
+                })
+
+                self.assertRedirects(response, '/accounts/profile/')
+                student.refresh_from_db()
+                with Image.open(student.avatar.path) as saved_avatar:
+                    self.assertEqual(saved_avatar.format, 'JPEG')
+                    self.assertEqual(saved_avatar.size, (512, 512))
+                updated_profile = client.get('/accounts/profile/').content.decode()
+                self.assertIn(f'src="{student.avatar.url}"', updated_profile)
+
+    def test_shared_header_shows_profile_avatar_or_user_initials(self):
+        with tempfile.TemporaryDirectory() as media_root:
+            with override_settings(MEDIA_ROOT=media_root):
+                student = User.objects.create_user(
+                    'avatar-student',
+                    'avatar-student@example.com',
+                    TEACHER_PASSWORD,
+                    first_name='Ada',
+                    last_name='Lovelace',
+                )
+                student.avatar.save(
+                    'student-avatar.png',
+                    SimpleUploadedFile('student-avatar.png', b'profile image', content_type='image/png'),
+                    save=True,
+                )
+                student_client = Client()
+                student_client.force_login(student)
+                student_page = student_client.get('/dashboard/').content.decode()
+                self.assertIn(f'src="{student.avatar.url}"', student_page)
+                self.assertIn('class="site-avatar__image"', student_page)
+                self.assertIn('data-avatar-preview', student_page)
+                self.assertIn('data-avatar-dialog', student_page)
+                self.assertIn('alt="Profile picture of Ada"', student_page)
+                self.assertIn('static/js/profile_avatar.js', student_page)
+
+                teacher_with_avatar = User.objects.create_user(
+                    'teacher-avatar',
+                    'teacher-avatar@example.com',
+                    TEACHER_PASSWORD,
+                    role=User.Role.TEACHER,
+                    first_name='Grace',
+                    last_name='Hopper',
+                )
+                teacher_with_avatar.avatar.save(
+                    'teacher-avatar.png',
+                    SimpleUploadedFile('teacher-avatar.png', b'teacher profile image', content_type='image/png'),
+                    save=True,
+                )
+                avatar_teacher_client = Client()
+                avatar_teacher_client.force_login(teacher_with_avatar)
+                teacher_avatar_page = avatar_teacher_client.get('/accounts/profile/').content.decode()
+                self.assertIn(f'src="{teacher_with_avatar.avatar.url}"', teacher_avatar_page)
+                self.assertIn('data-avatar-preview', teacher_avatar_page)
+                self.assertIn('data-avatar-dialog', teacher_avatar_page)
+
+                teacher = User.objects.create_user(
+                    'avatar-teacher',
+                    'avatar-teacher@example.com',
+                    TEACHER_PASSWORD,
+                    role=User.Role.TEACHER,
+                    first_name='Alan',
+                    last_name='Turing',
+                )
+                teacher_client = Client()
+                teacher_client.force_login(teacher)
+                teacher_page = teacher_client.get('/accounts/profile/').content.decode()
+                self.assertIn('class="site-avatar__initials" aria-hidden="true">AT</span>', teacher_page)
+                self.assertNotIn('class="site-avatar__image"', teacher_page)
+                self.assertNotIn('data-avatar-dialog', teacher_page)
+
     def test_profile_menu_renders_navigation_for_the_active_role(self):
         student = User.objects.create_user(
             'sidebar-student',
@@ -36,11 +209,23 @@ class AuthenticationTests(TestCase):
         student_client = Client()
         student_client.force_login(student)
         student_page = student_client.get('/accounts/profile/').content.decode()
-        for item in ('My Courses', 'Notes', 'Quiz', 'Performance', 'Recommendations',
-                     'Profile', 'Teacher-assisted', 'Find Teachers', 'My Classes',
+        for item in ('AI LEARNING', 'My Courses', 'AI Notes', 'AI Quiz', 'Performance',
+                     'Recommendations', 'Profile', 'TEACHER ASSISTED', 'Find Teachers', 'My Classes',
                      'Teacher-Assigned Quizzes', 'Shared Study Materials',
                      'Teaching Sessions', 'My Messages'):
             self.assertIn(item, student_page)
+        student_sidebar = student_page.split('<aside id="sidebar"', 1)[1].split('</aside>', 1)[0]
+        profile_link = '<nav class="student-sidebar__links" aria-label="Account">'
+        self.assertIn(profile_link, student_sidebar)
+        self.assertGreater(student_sidebar.index(profile_link), student_sidebar.rindex('</section>'))
+        self.assertEqual(student_sidebar.count('>👤 Profile</a>'), 1)
+        self.assertIn('<h2 class="student-sidebar__heading" id="ai-learning-heading">', student_page)
+        self.assertIn('<h2 class="student-sidebar__heading student-sidebar__heading--teacher" id="teacher-assisted-heading">', student_page)
+        self.assertNotIn('student-sidebar__toggle', student_page)
+        self.assertNotIn('student-sidebar__chevron', student_page)
+        teacher_assisted_page = student_client.get('/classes/mine/').content.decode()
+        self.assertIn('class="navlink active">🏫 My Classes', teacher_assisted_page)
+        self.assertIn('TEACHER ASSISTED', teacher_assisted_page)
 
         teacher_client = Client()
         teacher_client.force_login(teacher)
@@ -48,7 +233,7 @@ class AuthenticationTests(TestCase):
         for item in ('Teacher dashboard', 'My classes', 'Verify students',
                      'Materials', 'Sessions', 'Messages', 'Teacher profile'):
             self.assertIn(item, teacher_page)
-        for item in ('My Courses', 'Notes', 'Performance', 'Recommendations',
+        for item in ('My Courses', 'AI Notes', 'Performance', 'Recommendations',
                      'Find Teachers', 'Teacher-Assigned Quizzes'):
             self.assertNotIn(item, teacher_page)
 

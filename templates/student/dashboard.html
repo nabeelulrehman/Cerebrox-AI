@@ -1,76 +1,70 @@
 {% extends "layouts/dashboard_layout.html" %}
+{% load static %}
 {% block title %}Dashboard — CerebroX AI{% endblock %}
 {% block content %}
-<h1 class="font-display text-2xl font-bold mb-1">Welcome, {{ user.first_name|default:user.username }}!</h1>
-<p class="mb-6" style="color:var(--txt-dim)">Here's how you're doing across CerebroX AI.</p>
+<link rel="stylesheet" href="{% static 'css/student_dashboard.css' %}">
+<div class="student-dashboard">
+  <header class="dashboard-intro">
+    <h1 class="font-display text-2xl font-bold">Welcome, {{ user.first_name|default:user.username }}!</h1>
+    <p>Here's how you're doing across CerebroX AI.</p>
+  </header>
 
-<div class="grid sm:grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-  {% include "components/stat_card.html" with label="Total Quizzes" value=overview.total_quizzes %}
-  {% include "components/stat_card.html" with label="Average Score" value=overview.average_score|stringformat:".0f"|add:"%" %}
-  {% include "components/stat_card.html" with label="Highest Score" value=overview.highest_score|stringformat:".0f"|add:"%" %}
-  {% include "components/stat_card.html" with label="XP Points" value=user.xp_points %}
-</div>
-
-<div class="grid md:grid-cols-2 gap-4 mb-8">
-  <a href="{% url 'learning:notes_dashboard' %}" class="glass glass-hover p-6">
-    <p class="font-display font-semibold">📝 Notes</p>
-    <p class="text-sm mt-1" style="color:var(--txt-dim)">Create study notes from your course and topic.</p>
-  </a>
-  <a href="{% url 'quizzes:dashboard_generate' %}" class="glass glass-hover p-6">
-    <p class="font-display font-semibold">🧠 Quiz</p>
-    <p class="text-sm mt-1" style="color:var(--txt-dim)">Generate a practice quiz and review your results.</p>
-  </a>
-</div>
-
-<h2 class="font-display font-semibold mb-2">Teacher-assisted learning <span class="text-xs font-normal" style="color:var(--txt-faint)">(optional — your personal practice above is unaffected)</span></h2>
-<div class="grid md:grid-cols-3 gap-4 mb-8">
-  <a href="{% url 'teachers:directory' %}" class="glass glass-hover p-5"><p class="font-display font-semibold">🔎 Find Teachers</p><p class="text-sm mt-1" style="color:var(--txt-dim)">Browse verified teachers.</p></a>
-  <a href="{% url 'classrooms:my_classes' %}" class="glass glass-hover p-5"><p class="font-display font-semibold">🏫 My Classes</p><p class="text-sm mt-1" style="color:var(--txt-dim)">Join a class with a code or invitation.</p></a>
-  <a href="{% url 'class_quizzes:mine' %}" class="glass glass-hover p-5"><p class="font-display font-semibold">📋 Teacher-Assigned Quizzes</p><p class="text-sm mt-1" style="color:var(--txt-dim)">Reported separately from your practice scores.</p></a>
-</div>
-
-<div class="grid md:grid-cols-2 gap-6">
-  <div class="glass p-6">
-    <h2 class="font-display font-semibold mb-4">Course performance</h2>
-    {% for s in courses %}
-      <div class="mb-3">
-        <div class="flex justify-between text-sm mb-1"><span>{{ s.topic__course__name }}</span><span>{{ s.avg_score|floatformat:0 }}%</span></div>
-        <div class="bar-track"><div class="bar-fill" data-w="{{ s.avg_score|floatformat:0 }}" style="width:0%"></div></div>
-      </div>
-    {% empty %}
-      <p class="text-sm" style="color:var(--txt-faint)">Take a quiz to see performance here.</p>
-    {% endfor %}
+  <div class="student-stats">
+    {% include "components/stat_card.html" with label="Total Quizzes" value=overview.total_quizzes %}
+    {% include "components/stat_card.html" with label="Average Score" value=overview.average_score|stringformat:".0f"|add:"%" %}
+    {% include "components/stat_card.html" with label="Highest Score" value=overview.highest_score|stringformat:".0f"|add:"%" %}
+    {% include "components/stat_card.html" with label="XP Points" value=user.xp_points %}
   </div>
 
-  <div class="glass p-6">
-    <h2 class="font-display font-semibold mb-4">Weak topics</h2>
-    {% for t in weak.weak %}
-      <div class="flex justify-between items-center py-2 border-b" style="border-color:var(--line)">
-        <span class="text-sm">{{ t.topic__name }}</span>
-        <span class="pill pill-hard">{{ t.avg_score|floatformat:0 }}%</span>
-      </div>
-    {% empty %}
-      <p class="text-sm" style="color:var(--txt-faint)">No weak topics detected yet — nice!</p>
-    {% endfor %}
-  </div>
-</div>
+  <div class="student-insights">
+    <section class="glass student-panel">
+      <h2 class="font-display font-semibold">Course performance</h2>
+      {% for s in courses %}
+        <div class="course-performance">
+          <div class="course-performance-heading">
+            <span class="course-name">{{ s.topic__course__name }}</span>
+            <span class="course-score {% if s.avg_score < 40 %}score-low{% elif s.avg_score < 70 %}score-mid{% elif s.avg_score < 85 %}score-good{% else %}score-high{% endif %}">{{ s.avg_score|floatformat:0 }}%</span>
+          </div>
+          <div class="bar-track"><div class="bar-fill" data-w="{{ s.avg_score }}" style="width:0%"></div></div>
+        </div>
+      {% empty %}
+        <p class="dashboard-empty">Take a quiz to see performance here.</p>
+      {% endfor %}
+    </section>
 
-<div class="mt-8">
-  <h2 class="font-display font-semibold mb-4">Recent quizzes</h2>
-  <div class="grid md:grid-cols-2 gap-4">
-    {% for q in recent_quizzes %}{% include "components/quiz_card.html" with quiz=q %}{% empty %}
-      <p class="text-sm" style="color:var(--txt-faint)">No quizzes attempted yet. <a class="grad-text" href="{% url 'learning:courses' %}">Browse my courses →</a></p>
-    {% endfor %}
+    <section class="glass student-panel">
+      <h2 class="font-display font-semibold">Weak topics</h2>
+      {% for t in weak.weak %}
+        <div class="course-performance">
+          <div class="course-performance-heading">
+            <span class="course-name">{{ t.topic__name }}</span>
+            <span class="course-score {% if t.avg_score < 40 %}score-low{% elif t.avg_score < 70 %}score-mid{% elif t.avg_score < 85 %}score-good{% else %}score-high{% endif %}">{{ t.avg_score|floatformat:0 }}%</span>
+          </div>
+          <div class="bar-track"><div class="bar-fill" data-w="{{ t.avg_score }}" style="width:0%"></div></div>
+        </div>
+      {% empty %}
+        <p class="dashboard-empty">No weak topics detected yet — nice!</p>
+      {% endfor %}
+    </section>
   </div>
-</div>
 
-{% if recommendations %}
-<div class="mt-8">
-  <h2 class="font-display font-semibold mb-4">Recommendations</h2>
-  <div class="grid md:grid-cols-3 gap-4">
-    {% for rec in recommendations %}{% include "components/recommendation_card.html" %}{% endfor %}
-  </div>
+  <section class="dashboard-section">
+    <h2 class="font-display font-semibold">Recent quizzes</h2>
+    <div class="recent-quizzes">
+      {% for q in recent_quizzes %}{% include "components/quiz_card.html" with quiz=q %}{% empty %}
+        <p class="dashboard-empty">No quizzes attempted yet.</p>
+      {% endfor %}
+    </div>
+  </section>
+
+  {% if recommendations %}
+  <section class="dashboard-section">
+    <h2 class="font-display font-semibold">Recommendations</h2>
+    <div class="recommendations">
+      {% for rec in recommendations %}{% include "components/recommendation_card.html" %}{% endfor %}
+    </div>
+  </section>
+  {% endif %}
 </div>
-{% endif %}
 {% endblock %}
-{% block extra_js %}<script src="{% load static %}{% static 'js/dashboard.js' %}"></script>{% endblock %}
+{% block extra_js %}<script src="{% static 'js/dashboard.js' %}"></script>{% endblock %}

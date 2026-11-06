@@ -3,15 +3,21 @@ import mimetypes
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
+from django.db.models import Prefetch, Q
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from apps.accounts.permissions import admin_required, verified_teacher_required
 from apps.teachers.models import TeacherProfile
 from . import services
-from .forms import ResourceForm, GuidanceForm, SessionForm, ReviewForm
-from .models import Resource, Payment, GuidanceRequest, TeachingSession, SessionBooking, Review
+from .forms import (
+    GuidanceComposeForm, GuidanceForm, GuidanceReplyForm, ResourceForm, ReviewForm, SessionForm,
+)
+from .models import (
+    GuidanceMessage, Resource, Payment, GuidanceRequest, TeachingSession, SessionBooking, Review,
+)
 from .services import MarketError
 
 
@@ -92,32 +98,114 @@ def guidance_request(request, teacher_id):
     form = GuidanceForm(request.POST)
     if form.is_valid():
         g = form.save(commit=False)
-        g.student, g.teacher = request.user, t.user
+        g.student, g.teacher, g.started_by = request.user, t.user, request.user
         g.save()
         messages.success(request, 'Your message was sent. The teacher can reply here in the app.')
     return redirect('teachers:public_profile', teacher_id=t.id)
 
 
+def _guidance_context(user, form=None):
+    if user.is_student:
+        conversations = GuidanceRequest.objects.filter(student=user)
+    elif user.is_verified_teacher:
+        conversations = GuidanceRequest.objects.filter(teacher=user)
+    else:
+        raise PermissionDenied
+    conversations = conversations.select_related(
+        'student', 'teacher', 'started_by',
+    ).prefetch_related(Prefetch(
+        'messages',
+        queryset=GuidanceMessage.objects.select_related('sender').order_by('sent_at', 'pk'),
+    ))
+    return {
+        'items': conversations,
+        'compose_form': form if form is not None else GuidanceComposeForm(user=user),
+        'is_teacher': user.is_verified_teacher,
+    }
+
+
+def _render_guidance(request, form=None, status=200):
+    template = 'marketplace/inbox.html' if request.user.is_verified_teacher else 'marketplace/my_guidance.html'
+    return render(request, template, _guidance_context(request.user, form), status=status)
+
+
 @verified_teacher_required
 def teacher_inbox(request):
-    return render(request, 'marketplace/inbox.html', {'items': GuidanceRequest.objects.filter(teacher=request.user)
-                                                      .select_related('student')})
+    return _render_guidance(request)
+
+
+@login_required
+@require_POST
+def guidance_send(request):
+    if not request.user.is_student and not request.user.is_verified_teacher:
+        if request.user.is_teacher:
+            messages.warning(request, 'Your teacher account has not been approved yet.')
+            return redirect('teachers:dashboard')
+        raise PermissionDenied
+
+    form = GuidanceComposeForm(request.POST, user=request.user)
+    if not form.is_valid():
+        return _render_guidance(request, form=form, status=400)
+
+    recipient = form.cleaned_data['recipient']
+    if request.user.is_student:
+        student, teacher = request.user, recipient
+    else:
+        student, teacher = recipient, request.user
+    conversation = GuidanceRequest.objects.create(
+        student=student,
+        teacher=teacher,
+        subject=form.cleaned_data['subject'],
+        message=form.cleaned_data['message'],
+        started_by=request.user,
+    )
+    messages.success(request, 'Your message was sent.')
+    return redirect(f"{reverse('market:my_guidance')}#conversation-{conversation.pk}")
+
+
+def _add_guidance_reply(request, conversation, message_text):
+    form = GuidanceReplyForm({'message': message_text})
+    if not form.is_valid():
+        messages.error(request, 'Enter a message of up to 2,000 characters before sending.')
+        return False
+    GuidanceMessage.objects.create(
+        conversation=conversation,
+        sender=request.user,
+        body=form.cleaned_data['message'],
+    )
+    conversation.status = (
+        GuidanceRequest.Status.ANSWERED if request.user.is_teacher else GuidanceRequest.Status.OPEN
+    )
+    conversation.save(update_fields=['status'])
+    messages.success(request, 'Your reply was sent.')
+    return True
 
 
 @verified_teacher_required
 @require_POST
 def guidance_reply(request, request_id):
     g = get_object_or_404(GuidanceRequest, pk=request_id, teacher=request.user)
-    g.reply, g.status = request.POST.get('reply', '')[:2000], GuidanceRequest.Status.ANSWERED
-    g.save(update_fields=['reply', 'status'])
-    return redirect('market:teacher_inbox')
+    _add_guidance_reply(request, g, request.POST.get('message', request.POST.get('reply', '')))
+    return redirect(f"{reverse('market:teacher_inbox')}#conversation-{g.pk}")
+
+
+@login_required
+@require_POST
+def guidance_conversation_reply(request, request_id):
+    user = request.user
+    if not user.is_student and not user.is_verified_teacher:
+        raise PermissionDenied
+    conversation = get_object_or_404(
+        GuidanceRequest.objects.filter(Q(student=user) | Q(teacher=user)),
+        pk=request_id,
+    )
+    _add_guidance_reply(request, conversation, request.POST.get('message', ''))
+    return redirect(f"{reverse('market:my_guidance')}#conversation-{conversation.pk}")
 
 
 @login_required
 def my_guidance(request):
-    _student(request)
-    return render(request, 'marketplace/my_guidance.html',
-                  {'items': GuidanceRequest.objects.filter(student=request.user).select_related('teacher')})
+    return _render_guidance(request)
 
 
 # ---------------- sessions ----------------

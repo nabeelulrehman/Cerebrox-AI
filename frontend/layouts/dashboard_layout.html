@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% block page_layout_class %}has-sidebar{% if not user.is_admin_role and not user.is_teacher %} student-page-layout{% endif %}{% endblock %}
 {% block sidebar %}
   {% if user.is_admin_role %}
     {% include "components/admin_sidebar.html" %}
@@ -6,5 +7,10 @@
     {% include "components/teacher_sidebar.html" %}
   {% else %}
     {% include "components/sidebar.html" %}
+  {% endif %}
+{% endblock %}
+{% block footer %}
+  {% if user.is_admin_role or user.is_teacher %}
+    {% include "components/footer.html" with show_border=True %}
   {% endif %}
 {% endblock %}

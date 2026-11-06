@@ -49,6 +49,7 @@ def courses_list(request):
     return render(request, 'student/courses.html', {
         'courses': Course.objects.filter(student=request.user),
         'form': form,
+        'open_add_dialog': request.GET.get('add') == '1',
     })
 
 

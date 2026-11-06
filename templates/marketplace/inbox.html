@@ -1,8 +1,6 @@
 {% extends "layouts/teacher_layout.html" %}
-{% block title %}Student messages{% endblock %}
-{% block content %}
-<h1 class="font-display text-2xl font-bold mb-5">Guidance requests</h1>
-{% for g in items %}<div class="glass p-5 mb-3"><p class="text-xs" style="color:var(--txt-faint)">{{ g.student.get_full_name|default:g.student.username }} &middot; {{ g.created_at|date:"d M Y" }}</p><p class="text-sm my-2">{{ g.message|linebreaksbr }}</p>
-  <form method="post" action="{% url 'market:guidance_reply' g.id %}" class="flex gap-2">{% csrf_token %}<input class="field flex-1" name="reply" value="{{ g.reply }}" placeholder="Reply"><button class="btn btn-primary">Send</button></form></div>
-{% empty %}<p class="text-sm" style="color:var(--txt-faint)">No messages.</p>{% endfor %}
-{% endblock %}
+{% load static %}
+{% block title %}Guidance messages{% endblock %}
+{% block extra_head %}{{ block.super }}<link rel="stylesheet" href="{% static 'css/guidance.css' %}?v=3">{% endblock %}
+{% block content %}{% include "marketplace/_guidance_content.html" %}{% endblock %}
+{% block extra_js %}{{ block.super }}<script src="{% static 'js/guidance_compose.js' %}?v=1" defer></script>{% endblock %}

@@ -1,0 +1,125 @@
+<section class="guidance-page">
+  <header class="guidance-page__header">
+    <div>
+      <p class="guidance-page__eyebrow">{% if is_teacher %}TEACHER ASSISTED{% else %}TEACHER ASSISTED LEARNING{% endif %}</p>
+      <h1 class="font-display text-2xl font-bold">{% if is_teacher %}Guidance inbox{% else %}My messages{% endif %}</h1>
+      <p class="guidance-page__subtitle">Keep your questions and replies together in one place.</p>
+    </div>
+    <div class="guidance-compose-launch">
+      <button class="btn btn-primary guidance-compose__toggle" type="button" data-guidance-compose-open>New Message</button>
+    </div>
+  </header>
+
+  <div class="guidance-conversations">
+    {% for g in items %}
+      <article class="guidance-conversation glass" id="conversation-{{ g.pk }}">
+        <header class="guidance-conversation__header">
+          {% if user.pk == g.student_id %}
+            {% include "marketplace/_message_avatar.html" with person=g.teacher %}
+            <div class="guidance-conversation__heading">
+              <h2>{{ g.subject|default:"Guidance request" }}</h2>
+              <p>Conversation with {{ g.teacher.get_full_name|default:g.teacher.username }}</p>
+            </div>
+          {% else %}
+            {% include "marketplace/_message_avatar.html" with person=g.student %}
+            <div class="guidance-conversation__heading">
+              <h2>{{ g.subject|default:"Guidance request" }}</h2>
+              <p>Conversation with {{ g.student.get_full_name|default:g.student.username }}</p>
+            </div>
+          {% endif %}
+          <span class="guidance-conversation__status">{{ g.get_status_display }}</span>
+        </header>
+
+        <div class="guidance-thread" aria-label="Messages in {{ g.subject }}">
+          {% with author=g.started_by|default:g.student %}
+            <div class="guidance-message {% if author.pk == user.pk %}is-sent{% else %}is-received{% endif %}">
+              {% include "marketplace/_message_avatar.html" with person=author %}
+              <div class="guidance-message__content">
+                <div class="guidance-message__meta">
+                  <strong>{{ author.get_full_name|default:author.username }}</strong>
+                  <time datetime="{{ g.created_at|date:'c' }}">{{ g.created_at|date:"d M Y, g:i A" }}</time>
+                </div>
+                <p>{{ g.message|linebreaksbr }}</p>
+              </div>
+            </div>
+          {% endwith %}
+
+          {% if g.reply and not g.messages.all %}
+            <div class="guidance-message {% if user.pk == g.teacher_id %}is-received{% else %}is-sent{% endif %}">
+              {% include "marketplace/_message_avatar.html" with person=g.teacher %}
+              <div class="guidance-message__content">
+                <div class="guidance-message__meta">
+                  <strong>{{ g.teacher.get_full_name|default:g.teacher.username }}</strong>
+                  <time datetime="{{ g.created_at|date:'c' }}">{{ g.created_at|date:"d M Y, g:i A" }}</time>
+                </div>
+                <p>{{ g.reply|linebreaksbr }}</p>
+              </div>
+            </div>
+          {% endif %}
+
+          {% for item in g.messages.all %}
+            <div class="guidance-message {% if item.sender_id == user.pk %}is-sent{% else %}is-received{% endif %}">
+              {% include "marketplace/_message_avatar.html" with person=item.sender %}
+              <div class="guidance-message__content">
+                <div class="guidance-message__meta">
+                  <strong>{{ item.sender.get_full_name|default:item.sender.username }}</strong>
+                  <time datetime="{{ item.sent_at|date:'c' }}">{{ item.sent_at|date:"d M Y, g:i A" }}</time>
+                </div>
+                <p>{{ item.body|linebreaksbr }}</p>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+
+        <form method="post" action="{% url 'market:guidance_conversation_reply' g.pk %}" class="guidance-reply__form">
+          {% csrf_token %}
+          <input class="field" id="reply-{{ g.pk }}" name="message" type="text" maxlength="2000" required
+                 placeholder="Write a message…"
+                 aria-label="Reply to {% if user.pk == g.student_id %}{{ g.teacher.get_full_name|default:g.teacher.username }}{% else %}{{ g.student.get_full_name|default:g.student.username }}{% endif %}">
+          <button class="btn btn-primary" type="submit">Send</button>
+        </form>
+      </article>
+    {% empty %}
+      <div class="guidance-empty glass">
+        <h2>No conversations yet</h2>
+        <p>Start a new message to begin a guidance conversation.</p>
+      </div>
+    {% endfor %}
+  </div>
+
+  <dialog class="guidance-compose-modal" aria-labelledby="guidance-compose-title"
+          data-guidance-compose-dialog {% if compose_form.errors %}data-guidance-compose-invalid{% endif %}>
+    <section class="guidance-compose-modal__panel">
+      <header class="guidance-compose-modal__header">
+        <div>
+          <p class="guidance-page__eyebrow">NEW CONVERSATION</p>
+          <h2 class="font-display text-xl font-bold" id="guidance-compose-title">New Message</h2>
+        </div>
+        <button class="guidance-compose-modal__close" type="button" aria-label="Close new message form" data-guidance-compose-close>&times;</button>
+      </header>
+      <form method="post" action="{% url 'market:guidance_send' %}" class="guidance-compose__form">
+        {% csrf_token %}
+        <div>
+          <label class="label" for="{{ compose_form.recipient.id_for_label }}">Recipient</label>
+          {{ compose_form.recipient }}
+          {{ compose_form.recipient.errors }}
+        </div>
+        <div>
+          <label class="label" for="{{ compose_form.subject.id_for_label }}">Subject</label>
+          {{ compose_form.subject }}
+          {{ compose_form.subject.errors }}
+        </div>
+        <div>
+          <label class="label" for="{{ compose_form.message.id_for_label }}">Message</label>
+          {{ compose_form.message }}
+          {{ compose_form.message.errors }}
+        </div>
+        {% if compose_form.non_field_errors %}<div class="guidance-form-error">{{ compose_form.non_field_errors }}</div>{% endif %}
+        <div class="guidance-compose__actions">
+          <button class="btn btn-ghost" type="button" data-guidance-compose-close>Cancel</button>
+          <button class="btn btn-primary" type="submit">Send Message</button>
+        </div>
+      </form>
+    </section>
+  </dialog>
+</section>

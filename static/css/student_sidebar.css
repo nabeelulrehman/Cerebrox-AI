@@ -1,0 +1,20 @@
+#sidebar.student-sidebar{ padding:calc(var(--site-header-height) + 1rem) .75rem 1rem; }
+.page-layout.student-page-layout > #sidebar.student-sidebar{ top:0; bottom:0; }
+.student-sidebar__groups{ display:flex; flex-direction:column; gap:1.1rem; }
+.student-sidebar__group{ min-width:0; }
+.student-sidebar__group + .student-sidebar__group{ padding-top:.85rem; border-top:1px solid var(--line); }
+.student-sidebar__heading{ display:flex; align-items:center; gap:.55rem; margin:0 0 .45rem; padding:0 .55rem; color:#7041c3; font-size:.68rem; font-weight:700; letter-spacing:.075em; line-height:1.3; }
+.student-sidebar__heading--teacher{ color:#5368c6; }
+.student-sidebar__heading-icon{ display:grid; width:1.45rem; height:1.45rem; flex:0 0 auto; place-items:center; border:1px solid rgba(112,65,195,.14); border-radius:7px; background:rgba(167,139,250,.13); }
+.student-sidebar__heading--teacher .student-sidebar__heading-icon{ border-color:rgba(101,123,216,.16); background:rgba(101,123,216,.12); }
+.student-sidebar__heading-icon svg{ width:.95rem; height:.95rem; fill:none; stroke:currentColor; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
+.student-sidebar__links{ display:flex; flex-direction:column; gap:.12rem; padding-left:.35rem; }
+.student-sidebar__links .navlink{ min-height:2rem; }
+@media(max-width:767px){
+  .page-layout.student-page-layout{ flex-direction:column; }
+  .page-layout.student-page-layout > #sidebar.student-sidebar{ position:static; display:block; flex:0 0 auto; width:100%; max-height:calc(100dvh - var(--site-header-height) - 1px); overflow-x:hidden; overflow-y:auto; overscroll-behavior:contain; box-sizing:border-box; border-right:0; border-bottom:1px solid var(--line); padding:.45rem 1rem; }
+  .page-layout.student-page-layout > main.page-main{ height:auto; flex:1 1 0%; min-height:0; margin-left:0; }
+  .student-sidebar__groups{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.75rem; }
+  .student-sidebar__group + .student-sidebar__group{ padding-top:0; border-top:0; }
+  .student-sidebar__heading{ margin-bottom:.35rem; }
+}

@@ -1,0 +1,7 @@
+<span class="guidance-avatar" aria-hidden="true">
+  {% if person.avatar %}
+    <img src="{{ person.avatar.url }}" alt="" loading="lazy">
+  {% else %}
+    <span>{% if person.first_name %}{{ person.first_name|first|upper }}{% else %}{{ person.username|first|upper }}{% endif %}{% if person.last_name %}{{ person.last_name|first|upper }}{% endif %}</span>
+  {% endif %}
+</span>

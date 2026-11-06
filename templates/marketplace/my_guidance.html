@@ -1,7 +1,6 @@
 {% extends "layouts/dashboard_layout.html" %}
-{% block title %}My teacher messages{% endblock %}
-{% block content %}
-<h1 class="font-display text-2xl font-bold mb-5">My messages to teachers</h1>
-{% for g in items %}<div class="glass p-5 mb-3"><p class="text-xs" style="color:var(--txt-faint)">To {{ g.teacher.get_full_name|default:g.teacher.username }}</p><p class="text-sm my-2">{{ g.message|linebreaksbr }}</p>{% if g.reply %}<p class="text-sm p-3 rounded" style="background:var(--panel)">{{ g.reply|linebreaksbr }}</p>{% endif %}</div>
-{% empty %}<p class="text-sm" style="color:var(--txt-faint)">No messages yet.</p>{% endfor %}
-{% endblock %}
+{% load static %}
+{% block title %}Guidance messages{% endblock %}
+{% block extra_head %}{{ block.super }}<link rel="stylesheet" href="{% static 'css/guidance.css' %}?v=3">{% endblock %}
+{% block content %}{% include "marketplace/_guidance_content.html" %}{% endblock %}
+{% block extra_js %}{{ block.super }}<script src="{% static 'js/guidance_compose.js' %}?v=1" defer></script>{% endblock %}
