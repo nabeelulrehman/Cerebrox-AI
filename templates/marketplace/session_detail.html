@@ -1,0 +1,134 @@
+{% extends "layouts/dashboard_layout.html" %}
+{% load static %}
+{% block title %}{{ session.title }}{% endblock %}
+{% block content %}
+<p class="mb-4"><a class="grad-text" href="{% if can_manage %}{% url 'market:teacher_sessions' %}{% else %}{% url 'market:sessions' %}{% endif %}">← Back to sessions</a></p>
+<section class="glass p-5 md:p-7 mb-5">
+  <div class="flex flex-wrap items-start justify-between gap-3">
+    <div>
+      <h1 class="font-display text-2xl font-bold">{{ session.title }}</h1>
+      {% if session.subject %}<p class="mt-1 text-lg">{{ session.subject }}</p>{% endif %}
+      <p class="mt-2 text-sm" style="color:var(--txt-dim)">With {{ session.teacher.get_full_name|default:session.teacher.username }}</p>
+    </div>
+    <span class="pill">{{ session.get_status_display }}</span>
+  </div>
+  {% if reminder_due and active_booking %}<p class="mt-4 text-sm" role="status">Reminder: this class is scheduled within the next 24 hours.</p>{% endif %}
+  <div class="grid sm:grid-cols-2 gap-4 mt-5">
+    <div><p class="label">Date</p><p>{{ session.starts_at|date:"l, F j, Y" }}</p></div>
+    <div><p class="label">Time</p><p>{{ session.starts_at|date:"g:i A" }}–{{ session.ends_at|date:"g:i A" }} ({{ session.duration_minutes }} minutes)</p></div>
+    <div><p class="label">Classroom</p><p>LiveKit video classroom</p></div>
+    <div><p class="label">Maximum students</p><p>{{ session.capacity }}</p></div>
+    <div><p class="label">Price</p><p>{% if session.price %}{{ session.price }}{% else %}Free{% endif %}</p></div>
+  </div>
+  <div class="mt-5">
+    <h2 class="font-display text-lg font-semibold">Class description</h2>
+    <p class="mt-2 whitespace-pre-line">{{ session.description|default:"No description provided." }}</p>
+  </div>
+  {% if session.instructions %}
+    <div class="mt-5">
+      <h2 class="font-display text-lg font-semibold">Class instructions</h2>
+      <p class="mt-2 whitespace-pre-line">{{ session.instructions }}</p>
+    </div>
+  {% endif %}
+  <div class="flex flex-wrap gap-2 mt-6">
+    {% if can_manage %}
+      {% if session.status == 'upcoming' %}
+        <a class="btn btn-ghost" href="{% url 'market:session_edit' session.id %}">Edit / Reschedule</a>
+        <form method="post" action="{% url 'market:session_start' session.id %}">{% csrf_token %}<button class="btn btn-primary">Start Class</button></form>
+      {% elif session.status == 'ongoing' %}
+        <a href="{% url 'market:session_classroom' session.id %}" class="btn btn-primary">Open Class</a>
+        <form method="post" action="{% url 'market:session_end' session.id %}">{% csrf_token %}<button class="btn btn-primary">End Class</button></form>
+      {% endif %}
+      {% if session.status == 'upcoming' or session.status == 'ongoing' %}
+        <form method="post" action="{% url 'market:session_cancel' session.id %}" onsubmit="return confirm('Cancel this session and notify booked students?');">{% csrf_token %}<button class="btn btn-ghost">Cancel Session</button></form>
+      {% endif %}
+    {% elif can_book %}
+      <form method="post" action="{% url 'market:session_book' session.id %}">{% csrf_token %}<button class="btn btn-primary">Book this class</button></form>
+    {% elif can_cancel_booking %}
+      <span class="pill">{{ booking.get_status_display }}</span>
+      <form method="post" action="{% url 'market:session_booking_cancel' session.id %}">{% csrf_token %}<button class="btn btn-ghost">Cancel booking</button></form>
+    {% elif active_booking %}
+      <span class="pill">{{ booking.get_status_display }}</span>
+    {% elif booking %}
+      <span class="pill">{{ booking.get_status_display }}</span>
+    {% elif session.status == 'upcoming' %}
+      <span class="pill">Full</span>
+    {% endif %}
+    {% if can_join %}
+      <a class="btn btn-primary" href="{% url 'market:session_classroom' session.id %}">Join Class</a>
+    {% endif %}
+  </div>
+</section>
+
+{% if can_view_recording and session.recording_status == 'completed' and recording_ready %}
+  <section class="glass p-5 mb-5" aria-label="Class recording">
+    <h2 class="font-display text-xl font-semibold mb-2">Class recording</h2>
+    <p class="mb-3">The recording has been saved to private storage.</p>
+    <a class="btn btn-primary" href="{% url 'market:session_recording_play' session.id %}">Play recording</a>
+  </section>
+{% elif can_manage and session.recording_status == 'failed' %}
+  <section class="glass p-5 mb-5" role="status">
+    <h2 class="font-display text-xl font-semibold mb-2">Recording unavailable</h2>
+    <p>{{ session.recording_error|default:"LiveKit Egress or private storage could not complete the recording." }}</p>
+  </section>
+{% elif can_manage and session.recording_status == 'completed' and not recording_ready %}
+  <section class="glass p-5 mb-5" role="status">
+    <h2 class="font-display text-xl font-semibold mb-2">Recording completed</h2>
+    <p>The recording was saved, but playback remains disabled until the LiveKit Egress and private-storage verification flags are enabled.</p>
+  </section>
+{% elif can_view_recording and session.recording_status == 'starting' or can_view_recording and session.recording_status == 'recording' or can_view_recording and session.recording_status == 'stopping' %}
+  <section class="glass p-5 mb-5" role="status">
+    <h2 class="font-display text-xl font-semibold mb-2">Class recording</h2>
+    <p>Recording {{ session.get_recording_status_display|lower }}. Playback appears here after LiveKit Egress finishes and the private file is verified.</p>
+  </section>
+{% endif %}
+
+{% if can_manage %}
+  <section class="glass p-5 mb-5">
+    <h2 class="font-display text-xl font-semibold mb-3">Booked students</h2>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm text-left">
+        <thead><tr><th class="p-2">Student</th><th class="p-2">Booking status</th><th class="p-2">Booked at</th></tr></thead>
+        <tbody>
+          {% for item in bookings %}
+            <tr class="border-t" style="border-color:var(--line)">
+              <td class="p-2">{{ item.student.get_full_name|default:item.student.username }}</td>
+              <td class="p-2">{{ item.get_status_display }}</td>
+              <td class="p-2">{{ item.created_at|date:"M j, Y g:i A" }}</td>
+            </tr>
+          {% empty %}
+            <tr><td class="p-2" colspan="3">No students have booked this class yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  <section class="glass p-5">
+    <h2 class="font-display text-xl font-semibold mb-2">Attendance</h2>
+    <p class="text-sm mb-3" style="color:var(--txt-dim)">Attendance is recorded from authenticated classroom participant join and leave events.</p>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm text-left">
+        <thead><tr><th class="p-2">Student</th><th class="p-2">First joined</th><th class="p-2">Last left</th><th class="p-2">Joins</th><th class="p-2">Recorded time</th></tr></thead>
+        <tbody>
+          {% for item in attendance %}
+            <tr class="border-t" style="border-color:var(--line)">
+              <td class="p-2">{{ item.student.get_full_name|default:item.student.username }}</td>
+              <td class="p-2">{{ item.first_joined_at|date:"M j, Y g:i A" }}</td>
+              <td class="p-2">{{ item.last_left_at|date:"M j, Y g:i A"|default:"Still joined" }}</td>
+              <td class="p-2">{{ item.join_count }}</td>
+              <td class="p-2">{{ item.attendance_minutes }} min</td>
+            </tr>
+          {% empty %}
+            <tr><td class="p-2" colspan="5">No attendance events recorded yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% elif attendance %}
+  <p class="text-sm" style="color:var(--txt-dim)">Your attendance: {{ attendance.join_count }} join(s), {{ attendance.attendance_minutes }} recorded minute(s).</p>
+{% endif %}
+{% endblock %}
+{% block extra_js %}
+<script src="{% static 'js/session_details.js' %}?v=1" defer></script>
+{% endblock %}

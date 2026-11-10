@@ -9,10 +9,10 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{% static 'css/theme.css' %}?v=14">
+<link rel="stylesheet" href="{% static 'css/theme.css' %}?v=16">
 {% block extra_head %}{% endblock %}
 </head>
-<body>
+<body class="{% block body_class %}{% endblock %}">
   <div id="toast-root"></div>
   <div class="site-shell">
     {% include "components/navbar.html" %}

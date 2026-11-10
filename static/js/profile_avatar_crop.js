@@ -1,19 +1,18 @@
 (() => {
-  const form = document.querySelector('.profile-avatar-field')?.closest('form');
+  const initializeProfileAvatarCrop = (root = document) => {
+  const form = root.querySelector('.profile-avatar-field')?.closest('form');
   const input = form?.querySelector('[data-profile-avatar-input]');
-  const dialog = document.querySelector('[data-profile-crop-dialog]');
+  const dialog = root.querySelector('[data-profile-crop-dialog]');
   const source = dialog?.querySelector('[data-profile-crop-source]');
   const preview = dialog?.querySelector('[data-profile-crop-preview]');
   const previewCanvas = preview?.querySelector('[data-profile-crop-preview-canvas]');
-  const error = document.querySelector('[data-profile-crop-error]');
+  const error = root.querySelector('[data-profile-crop-error]');
   const confirmButton = dialog?.querySelector('[data-profile-crop-confirm]');
   const cancelButtons = dialog?.querySelectorAll('[data-profile-crop-cancel]');
   const zoomIn = dialog?.querySelector('[data-profile-crop-zoom-in]');
   const zoomOut = dialog?.querySelector('[data-profile-crop-zoom-out]');
 
-  if (!form || !input || !dialog || !source || !preview || !previewCanvas || !error || !confirmButton || !cancelButtons || !zoomIn || !zoomOut) {
-    return;
-  }
+  if (!form || !input || !dialog || !source || !preview || !previewCanvas || !error || !confirmButton || !cancelButtons || !zoomIn || !zoomOut) return;
 
   const previewContext = previewCanvas.getContext('2d');
   const maxBytes = 5 * 1024 * 1024;
@@ -244,4 +243,7 @@
       showError('Crop the selected image or cancel before saving your profile.');
     }
   });
+  };
+  window.initializeProfileAvatarCrop = initializeProfileAvatarCrop;
+  initializeProfileAvatarCrop();
 })();

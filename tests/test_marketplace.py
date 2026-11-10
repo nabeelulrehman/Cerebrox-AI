@@ -1,3 +1,6 @@
+import base64
+import hashlib
+from unittest.mock import AsyncMock, patch
 import shutil
 import tempfile
 from datetime import timedelta
@@ -5,14 +8,18 @@ from decimal import Decimal
 
 from django.core.files.storage import FileSystemStorage
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core import mail
 from django.db import IntegrityError, transaction
-from django.test import TestCase, Client
+from django.test import TestCase, Client, override_settings
 from django.utils import timezone
+from livekit import api
+from livekit.protocol.webhook import WebhookEvent
 
 from apps.classrooms.models import Enrollment
 from apps.marketplace import services
 from apps.marketplace.models import (
-    GuidanceMessage, GuidanceRequest, Resource, Payment, TeachingSession, SessionBooking, Review,
+    GuidanceMessage, GuidanceRequest, Resource, Payment, TeachingSession, SessionBooking,
+    SessionAttendance, Review,
 )
 from apps.teachers.models import TeacherProfile
 from tests.test_teacher_ecosystem import make_student, make_teacher, make_class, enroll, login, User, PW
@@ -109,10 +116,20 @@ class GuidanceConversationTests(MarketBase):
         self.assertContains(page, 'data-guidance-compose-dialog')
         self.assertContains(page, 'data-guidance-compose-open')
         self.assertContains(page, 'data-guidance-compose-close')
+        self.assertContains(page, 'data-recipient-search')
+        self.assertContains(page, 'role="combobox"')
         page_html = page.content.decode()
         self.assertLess(page_html.index('guidance-page__header'), page_html.index('guidance-compose-launch'))
         self.assertLess(page_html.index('guidance-compose-launch'), page_html.index('guidance-conversations'))
         self.assertContains(page, self.teacher.username)
+
+        search = student_client.get('/market/guidance/recipients/', {'q': self.teacher.username})
+        self.assertEqual(search.status_code, 200)
+        result_ids = [item['id'] for item in search.json()['results']]
+        self.assertIn(self.teacher.pk, result_ids)
+        self.assertNotIn(self.student.pk, result_ids)
+        email_search = student_client.get('/market/guidance/recipients/', {'q': self.teacher.email})
+        self.assertIn(self.teacher.pk, [item['id'] for item in email_search.json()['results']])
 
         response = student_client.post('/market/guidance/send/', {
             'recipient': self.teacher.pk,
@@ -157,6 +174,9 @@ class GuidanceConversationTests(MarketBase):
         page = teacher_client.get('/market/guidance/')
         self.assertEqual(page.status_code, 200)
         self.assertContains(page, self.student.username)
+        search = teacher_client.get('/market/guidance/recipients/', {'q': self.student.username})
+        self.assertEqual(search.status_code, 200)
+        self.assertIn(self.student.pk, [item['id'] for item in search.json()['results']])
 
         response = teacher_client.post('/market/guidance/send/', {
             'recipient': self.student.pk,
@@ -253,7 +273,13 @@ class SessionTests(MarketBase):
     def make_session(self, price=0, capacity=1):
         return TeachingSession.objects.create(teacher=self.teacher, title='Doubt clearing',
                                               starts_at=timezone.now() + timedelta(days=1), price=price,
-                                              capacity=capacity, meeting_link='https://meet.example/abc')
+                                              capacity=capacity)
+
+    @override_settings(LIVEKIT_URL='', LIVEKIT_API_KEY='secret-value', LIVEKIT_API_SECRET='')
+    def test_livekit_configuration_diagnostics_name_missing_variables_without_values(self):
+        issues = services.livekit_configuration_issues()
+        self.assertEqual(issues, ['LIVEKIT_URL is missing', 'LIVEKIT_API_SECRET is missing'])
+        self.assertNotIn('secret-value', ' '.join(issues))
 
     def test_free_session_confirms_and_capacity_enforced(self):
         s = self.make_session()
@@ -263,16 +289,229 @@ class SessionTests(MarketBase):
         with self.assertRaises(services.MarketError):
             services.book_session(self.student, s)
 
-    def test_paid_session_confirmed_only_after_payment_confirmation_and_link_hidden_until_then(self):
+    def test_paid_session_confirmed_only_after_payment_confirmation(self):
         s = self.make_session(price=Decimal('800'))
         b = services.book_session(self.student, s)
         self.assertEqual(b.status, SessionBooking.Status.PENDING_PAYMENT)
         self.assertNotIn('meet.example', login(self.student).get('/market/sessions/').content.decode())
+        self.assertNotIn('meet.example', login(self.student).get(f'/market/sessions/{s.pk}/').content.decode())
         admin = User.objects.create_user('adm', 'a@x.com', PW, role=User.Role.ADMIN)
         services.decide_payment(admin, Payment.objects.get().id, True)
         b.refresh_from_db()
         self.assertEqual(b.status, SessionBooking.Status.CONFIRMED)
-        self.assertIn('meet.example', login(self.student).get('/market/sessions/').content.decode())
+        self.assertNotIn('meet.example', login(self.student).get(f'/market/sessions/{s.pk}/').content.decode())
+
+    @override_settings(LIVEKIT_URL='', LIVEKIT_API_KEY='', LIVEKIT_API_SECRET='')
+    def test_teacher_to_student_online_session_lifecycle_and_attendance(self):
+        teacher_client = login(self.teacher)
+        scheduled_date = timezone.localtime(timezone.now() + timedelta(days=2)).date()
+        created = teacher_client.post('/market/teach/sessions/', {
+            'title': 'Algebra class',
+            'subject': 'Mathematics',
+            'description': 'Linear equations',
+            'scheduled_date': scheduled_date.isoformat(),
+            'start_time': '10:00',
+            'end_time': '11:30',
+            'price': '0',
+            'capacity': '2',
+            'instructions': 'Bring your workbook.',
+        })
+        session = TeachingSession.objects.get(title='Algebra class')
+        self.assertRedirects(created, f'/market/sessions/{session.pk}/')
+        self.assertContains(teacher_client.get(f'/market/sessions/{session.pk}/'), 'Start Class')
+        self.assertContains(teacher_client.get(f'/market/sessions/{session.pk}/'), 'Booked students')
+
+        student_client = login(self.student)
+        detail = student_client.get(f'/market/sessions/{session.pk}/')
+        self.assertContains(detail, 'Mathematics')
+        self.assertContains(detail, 'Bring your workbook.')
+        self.assertContains(detail, 'Book this class')
+        self.assertNotContains(detail, 'meet.google.com')
+        self.assertContains(detail, 'LiveKit video classroom')
+        booked = student_client.post(f'/market/sessions/{session.pk}/book/')
+        self.assertRedirects(booked, f'/market/sessions/{session.pk}/')
+        self.assertEqual(session.bookings.get().status, SessionBooking.Status.CONFIRMED)
+        self.assertContains(student_client.get(f'/market/sessions/{session.pk}/'), 'Confirmed')
+
+        teacher_client.post(f'/market/teach/sessions/{session.pk}/start/')
+        session.refresh_from_db()
+        self.assertEqual(session.status, TeachingSession.Status.ONGOING)
+        self.assertContains(student_client.get(f'/market/sessions/{session.pk}/'), 'Join Class')
+        join_response = student_client.get(f'/market/sessions/{session.pk}/join/')
+        self.assertEqual(join_response.status_code, 302)
+        self.assertEqual(join_response['Location'], f'/market/sessions/{session.pk}/classroom/')
+        self.assertFalse(SessionAttendance.objects.filter(session=session).exists())
+        self.assertContains(teacher_client.get(f'/market/sessions/{session.pk}/classroom/'),
+                            'Class recording')
+        self.assertContains(student_client.get(f'/market/sessions/{session.pk}/classroom/'),
+                            'Live classes are unavailable')
+
+        joined_at = timezone.now().replace(microsecond=0)
+        joined = WebhookEvent(event='participant_joined', created_at=int(joined_at.timestamp()))
+        joined.room.name = services.livekit_room_name(session)
+        joined.participant.identity = services.livekit_participant_identity(session, self.student)
+        services.process_livekit_webhook(joined)
+        services.process_livekit_webhook(joined)
+        left_at = joined_at + timedelta(seconds=60)
+        left = WebhookEvent(event='participant_left', created_at=int(left_at.timestamp()))
+        left.room.name = services.livekit_room_name(session)
+        left.participant.identity = services.livekit_participant_identity(session, self.student)
+        services.process_livekit_webhook(left)
+        services.process_livekit_webhook(left)
+        attendance = SessionAttendance.objects.get(session=session)
+        self.assertEqual(attendance.join_count, 1)
+        self.assertEqual(attendance.total_seconds, 60)
+        self.assertIsNotNone(attendance.last_left_at)
+        self.assertContains(teacher_client.get(f'/market/sessions/{session.pk}/'), self.student.username)
+
+        unbooked = make_student('unbooked')
+        unknown = WebhookEvent(event='participant_joined', created_at=int(joined_at.timestamp()))
+        unknown.room.name = services.livekit_room_name(session)
+        unknown.participant.identity = services.livekit_participant_identity(session, unbooked)
+        services.process_livekit_webhook(unknown)
+        self.assertFalse(SessionAttendance.objects.filter(session=session, student=unbooked).exists())
+
+        session.recording_status = TeachingSession.RecordingStatus.RECORDING
+        session.livekit_egress_id = 'egress-id'
+        session.save(update_fields=['recording_status', 'livekit_egress_id'])
+        with patch('apps.marketplace.services._stop_egress', new_callable=AsyncMock) as stop_egress:
+            teacher_client.post(f'/market/teach/sessions/{session.pk}/end/')
+        stop_egress.assert_awaited_once_with('egress-id')
+        session.refresh_from_db()
+        self.assertEqual(session.status, TeachingSession.Status.COMPLETED)
+        self.assertEqual(session.recording_status, TeachingSession.RecordingStatus.STOPPING)
+        self.assertNotContains(student_client.get(f'/market/sessions/{session.pk}/'), 'Join Class')
+
+    @override_settings(
+        LIVEKIT_URL='wss://unit-test.livekit.cloud',
+        LIVEKIT_API_KEY='unit-test-key',
+        LIVEKIT_API_SECRET='unit-test-secret',
+    )
+    def test_token_endpoint_authorizes_session_owner_and_confirmed_bookings(self):
+        session = self.make_session()
+        services.book_session(self.student, session)
+        services.start_session(session)
+        session.refresh_from_db()
+
+        teacher_client = login(self.teacher)
+        student_client = login(self.student)
+        rival = make_student('unbooked')
+        with patch('apps.marketplace.views.services.issue_livekit_token', return_value='signed-token') as issue_token:
+            teacher_response = teacher_client.post(f'/market/sessions/{session.pk}/token/')
+            self.assertEqual(teacher_response.status_code, 200)
+            self.assertEqual(teacher_response.json(), {
+                'url': 'wss://unit-test.livekit.cloud',
+                'token': 'signed-token',
+            })
+            self.assertNotContains(teacher_response, 'unit-test-secret')
+            self.assertTrue(issue_token.call_args.kwargs['is_teacher'])
+            self.assertEqual(issue_token.call_args.args[1], self.teacher)
+
+            student_response = student_client.post(f'/market/sessions/{session.pk}/token/')
+            self.assertEqual(student_response.status_code, 200)
+            self.assertFalse(issue_token.call_args.kwargs['is_teacher'])
+            self.assertEqual(issue_token.call_args.args[1], self.student)
+
+            self.assertEqual(login(rival).post(f'/market/sessions/{session.pk}/token/').status_code, 403)
+
+    def test_signed_webhook_records_attendance_and_rejects_body_tampering(self):
+        session = self.make_session()
+        services.book_session(self.student, session)
+        services.start_session(session)
+        joined_at = timezone.now().replace(microsecond=0)
+        payload = (
+            '{"event":"participant_joined","room":{"name":"%s"},'
+            '"participant":{"identity":"%s"},"createdAt":%d}'
+        ) % (
+            services.livekit_room_name(session),
+            services.livekit_participant_identity(session, self.student),
+            int(joined_at.timestamp()),
+        )
+        body = payload.encode()
+        token = api.AccessToken('webhook-key', 'webhook-secret').with_identity('webhook').with_ttl(
+            timedelta(minutes=2)
+        ).with_sha256(base64.b64encode(hashlib.sha256(body).digest()).decode()).to_jwt()
+        response = Client().post(
+            '/market/livekit/webhook/',
+            body,
+            content_type='application/json',
+            HTTP_AUTHORIZATION=token,
+        )
+        self.assertEqual(response.status_code, 401)
+
+        with override_settings(
+            LIVEKIT_URL='wss://webhook.livekit.cloud',
+            LIVEKIT_API_KEY='webhook-key',
+            LIVEKIT_API_SECRET='webhook-secret',
+        ):
+            token = api.AccessToken('webhook-key', 'webhook-secret').with_identity('webhook').with_ttl(
+                timedelta(minutes=2)
+            ).with_sha256(base64.b64encode(hashlib.sha256(body).digest()).decode()).to_jwt()
+            response = Client().post(
+                '/market/livekit/webhook/',
+                body,
+                content_type='application/json',
+                HTTP_AUTHORIZATION=token,
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            SessionAttendance.objects.get(session=session, student=self.student).join_count,
+            1,
+        )
+        tampered = Client().post(
+            '/market/livekit/webhook/',
+            body + b' ',
+            content_type='application/json',
+            HTTP_AUTHORIZATION=token,
+        )
+        self.assertEqual(tampered.status_code, 401)
+
+    def test_cancellation_releases_capacity_and_duplicate_bookings_are_blocked(self):
+        session = self.make_session(capacity=1)
+        student_client = login(self.student)
+        student_client.post(f'/market/sessions/{session.pk}/book/')
+        student_client.post(f'/market/sessions/{session.pk}/cancel/')
+        booking = SessionBooking.objects.get(session=session, student=self.student)
+        self.assertEqual(booking.status, SessionBooking.Status.CANCELLED)
+        student_client.post(f'/market/sessions/{session.pk}/book/')
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, SessionBooking.Status.CONFIRMED)
+        with self.assertRaises(services.MarketError):
+            services.book_session(self.student, session)
+
+    @override_settings(
+        EMAIL_HOST='smtp.example.test',
+        EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
+    )
+    def test_reschedule_and_cancellation_notify_booked_students(self):
+        mail.outbox.clear()
+        session = self.make_session()
+        student_client = login(self.student)
+        student_client.post(f'/market/sessions/{session.pk}/book/')
+        self.assertIn(self.student.email, mail.outbox[0].to)
+
+        new_date = timezone.localtime(timezone.now() + timedelta(days=3)).date()
+        teacher_client = login(self.teacher)
+        teacher_client.post(f'/market/teach/sessions/{session.pk}/edit/', {
+            'title': session.title,
+            'subject': 'Physics',
+            'description': 'Updated schedule',
+            'scheduled_date': new_date.isoformat(),
+            'start_time': '10:00',
+            'end_time': '11:00',
+            'price': '0',
+            'capacity': '1',
+            'instructions': 'Join on time.',
+        })
+        session.refresh_from_db()
+        self.assertEqual(timezone.localtime(session.starts_at).date(), new_date)
+        self.assertTrue(any('rescheduled' in message.subject.lower() for message in mail.outbox))
+
+        teacher_client.post(f'/market/teach/sessions/{session.pk}/cancel/')
+        session.refresh_from_db()
+        self.assertEqual(session.status, TeachingSession.Status.CANCELLED)
+        self.assertEqual(session.bookings.get().status, SessionBooking.Status.CANCELLED)
+        self.assertTrue(any('cancelled' in message.subject.lower() for message in mail.outbox))
 
     def test_unapproved_teacher_sessions_not_listed_or_bookable(self):
         pending = make_teacher('pend', approved=False)

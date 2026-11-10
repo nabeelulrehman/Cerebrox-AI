@@ -1,18 +1,56 @@
 {% extends "layouts/admin_layout.html" %}
-{% block title %}Teacher approvals — Admin{% endblock %}
+{% block title %}Teacher management — Admin{% endblock %}
 {% block content %}
-<h1 class="font-display text-2xl font-bold mb-4">Teacher approvals</h1>
-<div class="flex gap-2 mb-4">{% for v, l in statuses %}<a class="pill {% if v == status %}pill-medium{% endif %}" href="?status={{ v }}">{{ l }}</a>{% endfor %}</div>
-<div class="grid gap-4">
-{% for p in profiles %}<div class="glass p-5">
-  <p class="font-display font-semibold">{{ p.user.get_full_name|default:p.user.username }} <span class="text-xs" style="color:var(--txt-faint)">@{{ p.user.username }} &middot; {{ p.user.email }}</span></p>
-  <p class="text-sm mt-1">{{ p.headline }}</p>
-  <p class="text-sm mt-2"><b>Subjects:</b> {{ p.subjects }} &middot; <b>Experience:</b> {{ p.experience_years }} yrs &middot; {{ p.get_teaching_mode_display }}</p>
-  <p class="text-sm mt-1 whitespace-pre-wrap"><b>Qualifications:</b> {{ p.qualifications }}</p>
-  <form method="post" action="{% url 'admin_panel:teacher_decide' p.id %}" class="flex flex-wrap gap-2 items-end mt-3">{% csrf_token %}
-    <input class="field flex-1 min-w-[12rem]" name="note" placeholder="Note (shown to the teacher on rejection/suspension)" value="{{ p.verification_note }}">
-    <button class="btn btn-primary" name="decision" value="approve">Approve</button>
-    <button class="btn btn-ghost" name="decision" value="reject">Reject</button>
-    <button class="btn btn-ghost" name="decision" value="suspend">Suspend</button></form></div>
-{% empty %}<p class="text-sm" style="color:var(--txt-faint)">Nothing here.</p>{% endfor %}</div>
+<style>
+.teacher-page{--teacher-accent:#6d5ce8;--teacher-ink:#202248}.teacher-page .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:12px}.teacher-page .stat-card{border:1px solid rgba(109,92,232,.14);background:linear-gradient(140deg,rgba(255,255,255,.97),rgba(244,241,255,.9));border-radius:16px;padding:16px;box-shadow:0 5px 18px rgba(32,34,72,.05)}.teacher-page .podium{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}.teacher-page .rank-card{border-radius:16px;padding:16px;border:1px solid #e5e2ef;background:#fff}.teacher-page .rank-1{background:linear-gradient(140deg,#fff8dc,#fff);border-color:#e9c75e}.teacher-page .rank-2{background:linear-gradient(140deg,#f1f3f7,#fff);border-color:#bdc6d1}.teacher-page .rank-3{background:linear-gradient(140deg,#fff0e7,#fff);border-color:#d9a27e}.teacher-page .directory{width:100%;border-collapse:separate;border-spacing:0 9px}.teacher-page .directory th{text-align:left;font-size:.75rem;text-transform:uppercase;letter-spacing:.04em;color:#74758c;padding:8px}.teacher-page .directory td{background:rgba(255,255,255,.86);padding:12px 9px;vertical-align:top}.teacher-page .directory td:first-child{border-radius:12px 0 0 12px}.teacher-page .directory td:last-child{border-radius:0 12px 12px 0}.teacher-page .teacher-avatar{width:42px;height:42px;border-radius:50%;object-fit:cover;background:#eee9ff;display:grid;place-items:center;color:#5046a8;font-weight:700;flex:none}.teacher-page .filter-row{display:flex;gap:9px;flex-wrap:wrap;align-items:center}.teacher-page .filter-row .field{min-width:150px}@media(max-width:800px){.teacher-page .table-wrap{overflow-x:auto}.teacher-page .directory{min-width:820px}}
+</style>
+<main class="teacher-page space-y-6">
+  <header class="flex flex-wrap items-end justify-between gap-3">
+    <div><p class="text-xs uppercase tracking-wider" style="color:var(--txt-faint)">Admin · People</p><h1 class="font-display text-2xl font-bold">Teacher management</h1><p class="text-sm mt-1" style="color:var(--txt-faint)">Review applications, teaching profiles and student feedback.</p></div>
+  </header>
+
+  <section aria-label="Teacher overview">
+    <div class="stat-grid">
+      <article class="stat-card"><div class="text-xl">♙</div><p class="text-xs mt-2" style="color:var(--txt-faint)">Total Teachers</p><strong class="text-2xl">{{ total_teachers }}</strong></article>
+      <article class="stat-card"><div class="text-xl">◷</div><p class="text-xs mt-2" style="color:var(--txt-faint)">Pending Approvals</p><strong class="text-2xl">{{ pending_count }}</strong></article>
+      <article class="stat-card"><div class="text-xl">✓</div><p class="text-xs mt-2" style="color:var(--txt-faint)">Approved Teachers</p><strong class="text-2xl">{{ approved_count }}</strong></article>
+      <article class="stat-card"><div class="text-xl">★</div><p class="text-xs mt-2" style="color:var(--txt-faint)">Average Rating</p><strong class="text-2xl">{% if average_rating %}{{ average_rating|floatformat:1 }}<span class="text-sm"> / 5</span>{% else %}—{% endif %}</strong></article>
+      <article class="stat-card"><div class="text-xl">●</div><p class="text-xs mt-2" style="color:var(--txt-faint)">Active Teachers</p><strong class="text-2xl">{{ active_teachers }}</strong><p class="text-xs" style="color:var(--txt-faint)">Logged in within 30 days</p></article>
+    </div>
+  </section>
+
+  <section class="glass p-4 md:p-5">
+    <div class="flex flex-wrap items-end justify-between gap-3 mb-4"><div><h2 class="font-display text-lg font-bold">Teacher leaderboard</h2><p class="text-xs" style="color:var(--txt-faint)">Approved student reviews only. Ranking uses a confidence-weighted rating: (rating × reviews + platform average × 5) ÷ (reviews + 5).</p></div></div>
+    <div class="podium">
+      {% for p in leaderboard %}<article class="rank-card {% if p.rank == 1 %}rank-1{% elif p.rank == 2 %}rank-2{% elif p.rank == 3 %}rank-3{% endif %}">
+        <div class="flex items-center gap-3">
+          {% if p.user.avatar %}<img class="teacher-avatar" src="{{ p.user.avatar.url }}" alt="">{% else %}<div class="teacher-avatar">{{ p.user.get_full_name|default:p.user.username|first|upper }}</div>{% endif %}
+          <div class="min-w-0"><p class="font-semibold">{% if p.rank == 1 %}🏆 Top Performer · {% elif p.rank == 2 %}🥈 {% elif p.rank == 3 %}🥉 {% else %}#{{ p.rank }} · {% endif %}{{ p.user.get_full_name|default:p.user.username }}</p><p class="text-xs" style="color:var(--txt-faint)">{{ p.average_rating|floatformat:1 }} ★ · {{ p.review_count }} approved review{{ p.review_count|pluralize }} · {{ p.verified_skill_count }} listed subject{{ p.verified_skill_count|pluralize }}</p></div>
+        </div>
+        <p class="text-xs mt-3">{{ p.skills|join:", "|default:"No subjects listed" }}</p>
+      </article>{% empty %}<p class="text-sm py-3" style="color:var(--txt-faint)">No approved student reviews yet. The leaderboard will appear when reviews are approved.</p>{% endfor %}
+    </div>
+  </section>
+
+  <section class="glass p-4 md:p-5">
+    <div class="flex flex-wrap justify-between items-end gap-3 mb-4"><div><h2 class="font-display text-lg font-bold">Teacher directory</h2><p class="text-xs" style="color:var(--txt-faint)">Search and review teacher profiles, performance and approval status.</p></div></div>
+    <form method="get" class="filter-row mb-4">
+      <input class="field flex-1" type="search" name="q" value="{{ query }}" placeholder="Search name, username, email, subjects or qualifications">
+      <select class="field" name="status" aria-label="Approval status">{% for value,label in statuses %}<option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+      <select class="field" name="mode" aria-label="Teaching mode"><option value="">All teaching modes</option>{% for value,label in modes %}<option value="{{ value }}" {% if mode == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+      <button class="btn btn-primary" type="submit">Filter</button><a class="btn btn-ghost" href="{% url 'admin_panel:teachers' %}">Reset</a>
+    </form>
+    <div class="table-wrap"><table class="directory"><thead><tr><th>Teacher</th><th>Skills & profile</th><th>Rating</th><th>Sessions</th><th>Status</th><th>Approval actions</th></tr></thead><tbody>
+      {% for p in profiles %}<tr>
+        <td><div class="flex gap-3 items-center">{% if p.user.avatar %}<img class="teacher-avatar" src="{{ p.user.avatar.url }}" alt="">{% else %}<div class="teacher-avatar">{{ p.user.get_full_name|default:p.user.username|first|upper }}</div>{% endif %}<div><p class="font-semibold">{{ p.user.get_full_name|default:p.user.username }}</p><p class="text-xs" style="color:var(--txt-faint)">@{{ p.user.username }} · {{ p.user.email }}</p><p class="text-xs" style="color:var(--txt-faint)">Joined {{ p.created_at|date:"M j, Y" }}</p></div></div></td>
+        <td><p class="font-medium">{{ p.headline|default:"Teacher profile" }}</p><p class="text-xs">{{ p.skills|join:", "|default:"No skills listed" }}</p><p class="text-xs mt-1" style="color:var(--txt-faint)">{{ p.experience_years }} yrs · {{ p.get_teaching_mode_display }}{% if p.qualifications %} · {{ p.qualifications|truncatechars:110 }}{% endif %}</p>{% if p.bio %}<p class="text-xs mt-1">{{ p.bio|truncatechars:140 }}</p>{% endif %}</td>
+        <td><strong>{% if p.average_rating %}{{ p.average_rating|floatformat:1 }} ★{% else %}—{% endif %}</strong><p class="text-xs" style="color:var(--txt-faint)">{{ p.review_count }} approved reviews</p>{% for review in p.recent_reviews %}<p class="text-xs mt-1" title="{{ review.comment }}">“{{ review.comment|truncatechars:85 }}”</p>{% endfor %}</td>
+        <td>{{ p.completed_sessions }}</td>
+        <td><span class="pill">{{ p.get_verification_status_display }}</span></td>
+        <td><form method="post" action="{% url 'admin_panel:teacher_decide' p.id %}" class="grid gap-2">{% csrf_token %}<input class="field" name="note" placeholder="Decision note" value="{{ p.verification_note }}"><div class="flex flex-wrap gap-1"><button class="btn btn-primary" name="decision" value="approve">Approve</button><button class="btn btn-ghost" name="decision" value="reject">Reject</button><button class="btn btn-ghost" name="decision" value="suspend">Suspend</button></div></form></td>
+      </tr>{% empty %}<tr><td colspan="6" class="text-center py-8"><p class="font-semibold">No teachers match these filters</p><p class="text-sm mt-1" style="color:var(--txt-faint)">Try another status, search term or teaching mode.</p></td></tr>{% endfor %}
+    </tbody></table></div>
+    {% if page_obj.paginator.num_pages > 1 %}<nav class="flex justify-between items-center gap-3 mt-4" aria-label="Teacher pages"><span class="text-sm" style="color:var(--txt-faint)">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }} · {{ page_obj.paginator.count }} teachers</span><div class="flex gap-2">{% if page_obj.has_previous %}<a class="btn btn-ghost" href="?q={{ query|urlencode }}&status={{ status }}&mode={{ mode }}&page={{ page_obj.previous_page_number }}">Previous</a>{% endif %}{% if page_obj.has_next %}<a class="btn btn-ghost" href="?q={{ query|urlencode }}&status={{ status }}&mode={{ mode }}&page={{ page_obj.next_page_number }}">Next</a>{% endif %}</div></nav>{% endif %}
+  </section>
+</main>
 {% endblock %}

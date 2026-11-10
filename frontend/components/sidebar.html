@@ -36,9 +36,6 @@
       </nav>
     </section>
   </div>
-  <nav class="student-sidebar__links" aria-label="Account">
-    <a href="{% url 'accounts:profile' %}" class="navlink {% if current_view == 'accounts:profile' or current_view == 'accounts:password_change' %}active{% endif %}">👤 Profile</a>
-  </nav>
 </aside>
 {% endwith %}
-<link rel="stylesheet" href="{% static 'css/student_sidebar.css' %}?v=9">
+<link rel="stylesheet" href="{% static 'css/student_sidebar.css' %}?v=10">

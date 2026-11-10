@@ -2,9 +2,39 @@
 {% block title %}Teaching sessions{% endblock %}
 {% block content %}
 <h1 class="font-display text-2xl font-bold mb-5">Teaching sessions <span class="text-xs font-normal" style="color:var(--txt-faint)">(optional)</span></h1>
-{% for s in sessions %}<div class="glass p-5 mb-3 flex justify-between items-center gap-3"><div><p class="font-medium">{{ s.title }}</p><p class="text-xs" style="color:var(--txt-dim)">{{ s.teacher.get_full_name|default:s.teacher.username }} &middot; {{ s.starts_at }} &middot; {{ s.duration_minutes }} min &middot; {% if s.price %}{{ s.price }}{% else %}free{% endif %}</p>
-  {% for sid, b in mine.items %}{% if sid == s.id and b.status == 'confirmed' and s.meeting_link %}<p class="text-sm mt-1"><a class="grad-text" href="{{ s.meeting_link }}" rel="noopener">Join link</a></p>{% endif %}{% endfor %}</div>
-  {% for sid, b in mine.items %}{% if sid == s.id %}<span class="pill">{{ b.get_status_display }}</span>{% endif %}{% endfor %}
-  {% if s.id not in mine %}<form method="post" action="{% url 'market:session_book' s.id %}">{% csrf_token %}<button class="btn btn-primary">Book</button></form>{% endif %}</div>
-{% empty %}<p class="text-sm" style="color:var(--txt-faint)">No upcoming sessions.</p>{% endfor %}
+<div class="grid gap-4">
+{% for s in sessions %}
+  <article class="glass p-5">
+    <div class="flex flex-wrap justify-between items-start gap-3">
+      <div class="min-w-0">
+        <a class="font-display text-lg font-semibold grad-text" href="{% url 'market:session_detail' s.id %}">{{ s.title }}</a>
+        {% if s.subject %}<p class="text-sm mt-1">{{ s.subject }}</p>{% endif %}
+        <p class="text-sm mt-1" style="color:var(--txt-dim)">
+          {{ s.teacher.get_full_name|default:s.teacher.username }} · {{ s.starts_at|date:"M j, Y" }} ·
+          {{ s.starts_at|date:"g:i A" }}–{{ s.ends_at|date:"g:i A" }} · {{ s.duration_minutes }} min
+        </p>
+        <p class="text-xs mt-1" style="color:var(--txt-faint)">LiveKit classroom · {% if s.price %}{{ s.price }}{% else %}Free{% endif %}</p>
+        {% if s.student_booking and s.student_booking.status == 'confirmed' and s.status == 'ongoing' %}
+          <a class="btn btn-primary mt-3" href="{% url 'market:session_classroom' s.id %}">Join Class</a>
+        {% endif %}
+        {% if s.reminder_due %}<p class="text-sm mt-2" role="status">Reminder: this class starts within 24 hours.</p>{% endif %}
+      </div>
+      <div class="flex flex-col items-end gap-2">
+        <span class="pill">{{ s.get_status_display }}</span>
+        {% if s.student_booking %}
+          <span class="pill">{{ s.student_booking.get_status_display }}</span>
+          {% if s.student_booking.status == 'cancelled' %}<span class="pill">Booking cancelled</span>{% endif %}
+        {% endif %}
+        {% if not s.student_booking and s.status == 'upcoming' %}
+          <a class="btn btn-primary" href="{% url 'market:session_detail' s.id %}">View &amp; book</a>
+        {% else %}
+          <a class="btn btn-ghost" href="{% url 'market:session_detail' s.id %}">View details</a>
+        {% endif %}
+      </div>
+    </div>
+  </article>
+{% empty %}
+  <p class="text-sm" style="color:var(--txt-faint)">No available sessions.</p>
+{% endfor %}
+</div>
 {% endblock %}

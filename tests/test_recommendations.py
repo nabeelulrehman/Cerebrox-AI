@@ -4,6 +4,8 @@ from apps.learning.models import Course, Topic
 from apps.quizzes.services import create_ai_quiz
 from apps.quizzes.evaluation import submit_quiz
 from apps.analytics.recommendations import recommendation_for_topic, recommendations_for_student
+from unittest.mock import patch
+from tests.ai_fixtures import generated_questions
 
 User = get_user_model()
 
@@ -20,7 +22,8 @@ class RecommendationTests(TestCase):
         self.assertIn('Energy', rec['message'])
 
     def test_recommendations_for_student_after_quiz(self):
-        quiz = create_ai_quiz(self.student, self.topic, 'Medium', 4)
+        with patch('apps.quizzes.services.generate_questions_with_status', side_effect=generated_questions):
+            quiz = create_ai_quiz(self.student, self.topic, 'Medium', 4)
         answer_map = {str(qa.question_id): qa.question.correct_answer for qa in quiz.answers.all()}
         submit_quiz(quiz, answer_map)
         recs = recommendations_for_student(self.student, use_ai=False)

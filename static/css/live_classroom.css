@@ -1,0 +1,501 @@
+.live-classroom-layout .page-main {
+  max-width: none;
+  padding: 1rem;
+}
+
+.live-classroom {
+  --classroom-bg: #10131d;
+  --classroom-panel: #191e2b;
+  --classroom-line: rgba(255, 255, 255, .1);
+  color: #f5f7fb;
+  min-height: calc(100vh - 7rem);
+  background: var(--classroom-bg);
+  border: 1px solid var(--classroom-line);
+  border-radius: 1.25rem;
+  padding: clamp(1rem, 2vw, 1.5rem);
+}
+
+.classroom-header,
+.classroom-toolbar,
+.classroom-chat-entry {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+}
+
+.classroom-header {
+  justify-content: space-between;
+  border-bottom: 1px solid var(--classroom-line);
+  padding-bottom: 1rem;
+}
+
+.classroom-header h1 {
+  font-size: 1.35rem;
+  font-weight: 700;
+  margin-top: .35rem;
+}
+
+.classroom-header p,
+.classroom-back {
+  color: #aab3c5;
+  font-size: .875rem;
+}
+
+.classroom-state,
+.classroom-control {
+  border: 1px solid var(--classroom-line);
+  border-radius: .75rem;
+  padding: .65rem .85rem;
+  font-size: .875rem;
+}
+
+.classroom-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(16rem, 22rem);
+  gap: 1rem;
+  padding-top: 1rem;
+}
+
+.classroom-stage,
+.classroom-panel section {
+  background: var(--classroom-panel);
+  border: 1px solid var(--classroom-line);
+  border-radius: 1rem;
+}
+
+.classroom-stage {
+  min-width: 0;
+  padding: 1rem;
+}
+
+.classroom-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--gallery-columns, 1), var(--gallery-tile-size, 1px));
+  grid-template-rows: repeat(var(--gallery-rows, 1), var(--gallery-tile-size, 1px));
+  justify-content: center;
+  align-content: center;
+  gap: .75rem;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.classroom-screen-stage[hidden] {
+  display: none;
+}
+
+.classroom-screen-stage {
+  flex: 0 1 40%;
+  min-height: 0;
+  overflow: hidden;
+  margin-bottom: 1rem;
+  padding: .75rem;
+  border: 1px solid var(--classroom-line);
+  border-radius: .85rem;
+  background: #090b11;
+}
+
+.classroom-screen-header {
+  display: flex;
+  justify-content: space-between;
+  gap: .75rem;
+  margin-bottom: .6rem;
+  color: #aab3c5;
+  font-size: .85rem;
+}
+
+.classroom-screen-video {
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  max-height: min(40vh, 28rem);
+  overflow: hidden;
+}
+
+.classroom-screen-video video {
+  display: block;
+  width: 100%;
+  max-height: min(40vh, 28rem);
+  object-fit: contain;
+  background: #000;
+}
+
+.classroom-tile {
+  position: relative;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  border: 1px solid var(--classroom-line);
+  border-radius: .85rem;
+  background: #090b11;
+}
+
+.classroom-tile video {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  min-height: 0;
+  object-fit: cover;
+  object-position: center;
+}
+
+.classroom-tile video[data-local-camera] {
+  transform: scaleX(-1);
+}
+
+.classroom-camera-placeholder {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  color: #aab3c5;
+  font-size: .875rem;
+}
+
+.classroom-tile-name {
+  position: absolute;
+  left: .65rem;
+  bottom: .65rem;
+  border-radius: .5rem;
+  padding: .35rem .55rem;
+  background: rgba(0, 0, 0, .7);
+  font-size: .8rem;
+}
+
+.classroom-placeholder {
+  grid-column: 1 / -1;
+  align-self: center;
+  color: #aab3c5;
+  text-align: center;
+}
+
+.classroom-toolbar {
+  flex-wrap: wrap;
+  justify-content: center;
+  padding-top: 1rem;
+}
+
+.classroom-control {
+  background: #252c3b;
+  color: #f5f7fb;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.classroom-control-icon {
+  width: 1.1rem;
+  height: 1.1rem;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+  vertical-align: middle;
+}
+
+.classroom-control[data-camera],
+.classroom-control[data-screen-share] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .45rem;
+}
+
+.classroom-control.is-active {
+  border-color: rgba(129, 230, 190, .55);
+  background: #1f5a48;
+}
+
+.classroom-control[data-enabled="false"] [data-icon-off] {
+  stroke: #ff8b8b;
+}
+
+.classroom-control[data-enabled="true"] [data-icon-off] {
+  display: none;
+}
+
+.classroom-control:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.classroom-leave,
+.classroom-end {
+  background: #7f2632;
+}
+
+.classroom-panel {
+  display: grid;
+  grid-template-rows: minmax(8rem, .75fr) minmax(16rem, 1.25fr);
+  gap: 1rem;
+  min-width: 0;
+}
+
+.classroom-panel section {
+  min-height: 0;
+  padding: 1rem;
+}
+
+.classroom-panel h2 {
+  font-weight: 700;
+  margin-bottom: .75rem;
+}
+
+.classroom-participants,
+.classroom-messages {
+  display: grid;
+  gap: .5rem;
+  max-height: 15rem;
+  overflow: auto;
+  list-style: none;
+  padding: 0;
+}
+
+.classroom-participant,
+.classroom-message {
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid var(--classroom-line);
+  padding: .4rem 0;
+  font-size: .875rem;
+}
+
+.classroom-message time {
+  display: block;
+  color: #aab3c5;
+  font-size: .7rem;
+}
+
+.classroom-chat {
+  display: flex;
+  flex-direction: column;
+}
+
+.classroom-messages {
+  flex: 1;
+}
+
+.classroom-chat-entry input {
+  min-width: 0;
+  flex: 1;
+  border: 1px solid var(--classroom-line);
+  border-radius: .6rem;
+  padding: .6rem;
+  color: #f5f7fb;
+  background: #10131d;
+}
+
+.classroom-chat-entry button {
+  border-radius: .6rem;
+  padding: .6rem .8rem;
+  color: #10131d;
+  background: #b8c5ff;
+}
+
+.classroom-chat-entry button:disabled {
+  opacity: .5;
+}
+
+.classroom-error,
+.classroom-notice {
+  color: #ffb9b9;
+  margin-top: .8rem;
+}
+
+.classroom-recording,
+.classroom-recording-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+}
+
+.classroom-recording {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--classroom-line);
+  border-radius: 1rem;
+  background: var(--classroom-panel);
+}
+
+.classroom-recording h2 {
+  font-weight: 700;
+}
+
+.classroom-recording-unavailable {
+  color: #aab3c5;
+  font-size: .8rem;
+}
+
+.classroom-notice {
+  padding: .75rem 1rem;
+  border: 1px solid #70424b;
+  border-radius: .75rem;
+  background: #321c23;
+}
+
+@media (max-width: 850px) {
+  .classroom-main {
+    grid-template-columns: 1fr;
+  }
+
+  .classroom-panel {
+    grid-template-rows: auto minmax(16rem, 1fr);
+  }
+
+  .classroom-recording {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+/* The classroom is a page mode: remove the site chrome and lock the page to
+   the viewport while keeping scrolling inside classroom panels when needed. */
+html:has(body.live-classroom-page),
+body.live-classroom-page {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body.live-classroom-page::before { display: none; }
+body.live-classroom-page .site-shell { display: block; width: 100%; height: 100%; }
+body.live-classroom-page .site-shell > header,
+body.live-classroom-page > footer,
+body.live-classroom-page .site-shell > .site-profile-dialog,
+body.live-classroom-page > #toast-root { display: none !important; }
+body.live-classroom-page .live-classroom-layout {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+body.live-classroom-page main.page-main {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+body.live-classroom-page .page-content { width: 100%; height: 100%; min-height: 0; }
+
+.live-classroom {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: .4rem;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  padding: clamp(.4rem, .8vw, .75rem);
+  box-sizing: border-box;
+}
+.classroom-header { flex: none; padding-bottom: .35rem; }
+.classroom-header h1 { font-size: clamp(1rem, 2vw, 1.35rem); }
+.classroom-notice { flex: none; margin: 0; }
+.classroom-main {
+  flex: 1 1 auto;
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(14rem, 22rem);
+  min-height: 0;
+  overflow: hidden;
+  padding-top: 0;
+}
+.classroom-stage {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  padding: clamp(.25rem, .5vh, .4rem);
+  overflow: hidden;
+}
+.classroom-grid {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+.classroom-tile video[hidden] { display: none; }
+.classroom-camera-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: .65rem;
+  min-height: 0;
+  color: #aab3c5;
+  font-size: .875rem;
+}
+.classroom-camera-placeholder[hidden] { display: none; }
+.classroom-camera-avatar {
+  display: grid;
+  place-items: center;
+  width: clamp(3rem, 8vw, 5rem);
+  aspect-ratio: 1;
+  border: 1px solid var(--classroom-line);
+  border-radius: 50%;
+  background: #252c3b;
+  color: #f5f7fb;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+.classroom-toolbar { flex: none; padding-top: .35rem; }
+.classroom-error { flex: none; margin: 0; }
+.classroom-panel {
+  grid-template-rows: minmax(0, .75fr) minmax(0, 1.25fr);
+  min-height: 0;
+  overflow: hidden;
+}
+.classroom-panel section { overflow: hidden; }
+.classroom-participants, .classroom-messages { max-height: none; min-height: 0; }
+.classroom-recording { flex: none; margin-top: 0; padding: .25rem .55rem; }
+.classroom-recording > div:first-child { display: flex; align-items: center; gap: .55rem; min-width: 0; }
+.classroom-recording h2 { font-size: .8rem; }
+.classroom-recording p { margin: 0; font-size: .72rem; }
+.classroom-recording .classroom-control { padding: .35rem .55rem; font-size: .75rem; }
+
+@media (max-width: 850px) {
+  .classroom-main { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(9rem, 30vh); }
+  .classroom-panel { grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); grid-template-rows: minmax(0, 1fr); }
+  .classroom-panel section { padding: .65rem; }
+  .classroom-screen-stage { flex-basis: 32%; }
+  .classroom-screen-video { min-height: 0; max-height: 30vh; }
+  .classroom-screen-video video { max-height: 30vh; }
+  .classroom-toolbar { gap: .4rem; }
+  .classroom-control { padding: .5rem .6rem; font-size: .78rem; }
+  .classroom-recording { gap: .4rem; }
+  .classroom-recording-actions { flex-wrap: wrap; }
+}
+
+@media (max-width: 520px) {
+  .classroom-header { align-items: flex-start; gap: .35rem; }
+  .classroom-state { padding: .4rem .5rem; font-size: .75rem; }
+  .classroom-header p { font-size: .75rem; }
+  .classroom-main { grid-template-rows: minmax(0, 1fr) minmax(8rem, 28vh); }
+  .classroom-panel { gap: .5rem; }
+  .classroom-panel h2 { font-size: .85rem; margin-bottom: .35rem; }
+  .classroom-toolbar { justify-content: flex-start; }
+  .classroom-control { padding: .42rem .5rem; }
+}

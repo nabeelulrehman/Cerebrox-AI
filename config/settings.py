@@ -6,9 +6,18 @@ from pathlib import Path
 from dotenv import dotenv_values, load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-ENV_FILE = BASE_DIR / '.env.example'
+ENV_FILE = BASE_DIR / '.env'
 if not ENV_FILE.is_file() and (BASE_DIR / 'env').is_file():
     ENV_FILE = BASE_DIR / 'env'
+_DOTENV_VALUES = dotenv_values(ENV_FILE)
+
+
+def _environment_value(name, default=''):
+    """Prefer an explicitly supplied environment value, but let .env fill blanks."""
+    value = os.environ.get(name)
+    if value is None or not value.strip():
+        value = _DOTENV_VALUES.get(name)
+    return default if value is None else value
 
 
 def _normalize_gemini_api_key(value):
@@ -20,7 +29,7 @@ def _normalize_gemini_api_key(value):
 
 _PROCESS_GEMINI_API_KEY = _normalize_gemini_api_key(os.environ.get('GEMINI_API_KEY'))
 _DOTENV_GEMINI_API_KEY = _normalize_gemini_api_key(
-    dotenv_values(ENV_FILE).get('GEMINI_API_KEY')
+    _DOTENV_VALUES.get('GEMINI_API_KEY')
 )
 load_dotenv(dotenv_path=ENV_FILE)
 
@@ -184,6 +193,19 @@ if EMAIL_HOST:
 else:
     EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'CerebroX AI <no-reply@localhost>')
+
+# LiveKit credentials are server-side only. Recording requires explicit opt-in and
+# private S3-compatible storage; missing or placeholder values keep it unavailable.
+LIVEKIT_URL = _environment_value('LIVEKIT_URL').strip()
+LIVEKIT_API_KEY = _environment_value('LIVEKIT_API_KEY').strip()
+LIVEKIT_API_SECRET = _environment_value('LIVEKIT_API_SECRET').strip()
+LIVEKIT_RECORDING_ENABLED = _environment_value('LIVEKIT_RECORDING_ENABLED', 'False').strip().lower() == 'true'
+LIVEKIT_RECORDING_VERIFIED = _environment_value('LIVEKIT_RECORDING_VERIFIED', 'False').strip().lower() == 'true'
+LIVEKIT_RECORDING_S3_BUCKET = _environment_value('LIVEKIT_RECORDING_S3_BUCKET').strip()
+LIVEKIT_RECORDING_S3_REGION = _environment_value('LIVEKIT_RECORDING_S3_REGION').strip()
+LIVEKIT_RECORDING_S3_ACCESS_KEY = _environment_value('LIVEKIT_RECORDING_S3_ACCESS_KEY').strip()
+LIVEKIT_RECORDING_S3_SECRET = _environment_value('LIVEKIT_RECORDING_S3_SECRET').strip()
+LIVEKIT_RECORDING_S3_ENDPOINT = _environment_value('LIVEKIT_RECORDING_S3_ENDPOINT').strip().rstrip('/')
 
 # ---- CerebroX business rules (apps/analytics) ----
 WEAK_TOPIC_THRESHOLDS = {

@@ -46,6 +46,7 @@ class AIGenerationTests(TestCase):
     def test_dotenv_file_is_resolved_from_project_root(self):
         self.assertEqual(settings.ENV_FILE.parent, settings.BASE_DIR)
         self.assertIn(settings.ENV_FILE.name, {'.env', 'env'})
+        self.assertNotEqual(settings.ENV_FILE.name, '.env.example')
 
     def test_gemini_client_receives_configured_key_and_model(self):
         _get_gemini_client.cache_clear()
@@ -206,6 +207,37 @@ class AIGenerationTests(TestCase):
         self.assertEqual(result, {'answer': 'ok'})
         self.assertEqual(client.models.generate_content.call_count, 2)
         sleep.assert_called_once_with(1)
+
+    def test_connection_refusal_is_retried_without_network_access(self):
+        client = Mock()
+        client.models.generate_content.side_effect = [
+            httpx.ConnectError('connection refused'),
+            SimpleNamespace(text='{"answer":"recovered"}'),
+        ]
+        with (
+            patch('apps.ai_engine.gemini_client._configured_client', return_value=client),
+            patch('apps.ai_engine.gemini_client.settings.GEMINI_MAX_RETRIES', 1),
+            patch('apps.ai_engine.gemini_client.time.sleep') as sleep,
+        ):
+            result = chat_json('system', 'question')
+
+        self.assertEqual(result, {'answer': 'recovered'})
+        self.assertEqual(client.models.generate_content.call_count, 2)
+        sleep.assert_called_once_with(1)
+
+    def test_exhausted_connection_refusals_raise_unavailable_without_network_access(self):
+        client = Mock()
+        client.models.generate_content.side_effect = httpx.ConnectError('connection refused')
+        with (
+            patch('apps.ai_engine.gemini_client._configured_client', return_value=client),
+            patch('apps.ai_engine.gemini_client.settings.GEMINI_MAX_RETRIES', 2),
+            patch('apps.ai_engine.gemini_client.time.sleep'),
+        ):
+            with self.assertRaises(AIUnavailableError) as raised:
+                chat_json('system', 'question')
+
+        self.assertIn('ConnectError', str(raised.exception))
+        self.assertEqual(client.models.generate_content.call_count, 3)
 
     def test_stream_retries_timeout_only_before_emitting_text(self):
         client = Mock()

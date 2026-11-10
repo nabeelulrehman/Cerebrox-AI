@@ -1,7 +1,34 @@
 {% extends "layouts/teacher_layout.html" %}
-{% block title %}Teaching sessions{% endblock %}
+{% block title %}{% if session %}Edit session{% else %}Teaching sessions{% endif %}{% endblock %}
 {% block content %}
-<h1 class="font-display text-2xl font-bold mb-5">Teaching sessions</h1>
-<div class="grid md:grid-cols-2 gap-6"><div class="glass p-5">{% for s in sessions %}<div class="py-2 border-b text-sm" style="border-color:var(--line)">{{ s.title }} — {{ s.starts_at }} — {% if s.price %}{{ s.price }}{% else %}free{% endif %} ({{ s.bookings.count }}/{{ s.capacity }})</div>{% empty %}<p class="text-sm" style="color:var(--txt-faint)">No sessions.</p>{% endfor %}</div>
-<form method="post" class="glass p-5 grid gap-3 content-start">{% csrf_token %}{% include "components/form_fields.html" %}<button class="btn btn-primary">Create session</button></form></div>
+<h1 class="font-display text-2xl font-bold mb-5">{% if session %}Edit or reschedule session{% else %}Teaching sessions{% endif %}</h1>
+<div class="grid md:grid-cols-2 gap-6">
+  <section class="glass p-5">
+    <h2 class="font-display text-lg font-semibold mb-3">{% if session %}Update session{% else %}Your sessions{% endif %}</h2>
+    {% for item in sessions %}
+      <article class="py-3 border-b" style="border-color:var(--line)">
+        <a class="font-medium grad-text" href="{% url 'market:session_detail' item.id %}">{{ item.title }}</a>
+        <p class="text-sm mt-1" style="color:var(--txt-dim)">{{ item.starts_at|date:"M j, Y" }} · {{ item.starts_at|date:"g:i A" }}–{{ item.ends_at|date:"g:i A" }} · {{ item.get_status_display }}</p>
+        <p class="text-xs" style="color:var(--txt-faint)">{{ item.bookings.count }} total bookings · LiveKit classroom</p>
+        {% if item.recording_status == 'completed' and recording_ready %}
+          <a class="btn btn-ghost mt-2" href="{% url 'market:session_recording_play' item.id %}">Play class recording</a>
+        {% elif item.recording_status == 'completed' %}
+          <p class="text-xs mt-2" role="status">Recording completed; playback is unavailable until recording verification is enabled.</p>
+        {% elif item.recording_status == 'starting' or item.recording_status == 'recording' or item.recording_status == 'stopping' %}
+          <p class="text-xs mt-2" role="status">Recording {{ item.get_recording_status_display|lower }}. It will be available after Egress and private storage are verified.</p>
+        {% elif item.recording_status == 'failed' %}
+          <p class="text-xs mt-2" role="status">Recording failed: {{ item.recording_error|default:"Egress or private storage could not finalize this recording." }}</p>
+        {% endif %}
+      </article>
+    {% empty %}
+      <p class="text-sm" style="color:var(--txt-faint)">No sessions yet. Create your first online class with the form.</p>
+    {% endfor %}
+  </section>
+  <form method="post" class="glass p-5 grid gap-3 content-start">
+    {% csrf_token %}
+    {% include "components/form_fields.html" %}
+    <button class="btn btn-primary w-max">{% if session %}Save changes{% else %}Create session{% endif %}</button>
+    {% if session %}<a class="btn btn-ghost w-max" href="{% url 'market:session_detail' session.id %}">Back to session</a>{% endif %}
+  </form>
+</div>
 {% endblock %}

@@ -41,7 +41,7 @@ class AuthenticationTests(TestCase):
         self.assertIn('data-profile-crop-zoom-out', html)
         self.assertIn('Crop &amp; Save', html)
         self.assertIn('cropperjs@1.6.2', html)
-        self.assertIn('/static/js/profile_avatar_crop.js?v=3', html)
+        self.assertIn('/static/js/profile_avatar_crop.js?v=4', html)
 
     def test_profile_rejects_unsupported_and_oversized_avatars_without_replacing_current(self):
         with tempfile.TemporaryDirectory() as media_root:
@@ -141,10 +141,11 @@ class AuthenticationTests(TestCase):
                 student_page = student_client.get('/dashboard/').content.decode()
                 self.assertIn(f'src="{student.avatar.url}"', student_page)
                 self.assertIn('class="site-avatar__image"', student_page)
-                self.assertIn('data-avatar-preview', student_page)
-                self.assertIn('data-avatar-dialog', student_page)
-                self.assertIn('alt="Profile picture of Ada"', student_page)
-                self.assertIn('static/js/profile_avatar.js', student_page)
+                self.assertIn('data-profile-menu-trigger', student_page)
+                self.assertIn('data-profile-form-link', student_page)
+                self.assertIn('data-profile-dialog', student_page)
+                self.assertIn('href="/accounts/logout/" class="site-profile-dropdown__logout"', student_page)
+                self.assertIn('static/js/profile_menu.js?v=3', student_page)
 
                 teacher_with_avatar = User.objects.create_user(
                     'teacher-avatar',
@@ -163,8 +164,8 @@ class AuthenticationTests(TestCase):
                 avatar_teacher_client.force_login(teacher_with_avatar)
                 teacher_avatar_page = avatar_teacher_client.get('/accounts/profile/').content.decode()
                 self.assertIn(f'src="{teacher_with_avatar.avatar.url}"', teacher_avatar_page)
-                self.assertIn('data-avatar-preview', teacher_avatar_page)
-                self.assertIn('data-avatar-dialog', teacher_avatar_page)
+                self.assertIn('data-profile-menu-trigger', teacher_avatar_page)
+                self.assertIn('href="/accounts/logout/" class="site-profile-dropdown__logout"', teacher_avatar_page)
 
                 teacher = User.objects.create_user(
                     'avatar-teacher',
@@ -179,7 +180,8 @@ class AuthenticationTests(TestCase):
                 teacher_page = teacher_client.get('/accounts/profile/').content.decode()
                 self.assertIn('class="site-avatar__initials" aria-hidden="true">AT</span>', teacher_page)
                 self.assertNotIn('class="site-avatar__image"', teacher_page)
-                self.assertNotIn('data-avatar-dialog', teacher_page)
+                self.assertIn('data-profile-menu-dropdown', teacher_page)
+                self.assertIn('Teacher profile', teacher_page)
 
     def test_profile_menu_renders_navigation_for_the_active_role(self):
         student = User.objects.create_user(
@@ -210,15 +212,16 @@ class AuthenticationTests(TestCase):
         student_client.force_login(student)
         student_page = student_client.get('/accounts/profile/').content.decode()
         for item in ('AI LEARNING', 'My Courses', 'AI Notes', 'AI Quiz', 'Performance',
-                     'Recommendations', 'Profile', 'TEACHER ASSISTED', 'Find Teachers', 'My Classes',
+                     'Recommendations', 'TEACHER ASSISTED', 'Find Teachers', 'My Classes',
                      'Teacher-Assigned Quizzes', 'Shared Study Materials',
                      'Teaching Sessions', 'My Messages'):
             self.assertIn(item, student_page)
         student_sidebar = student_page.split('<aside id="sidebar"', 1)[1].split('</aside>', 1)[0]
-        profile_link = '<nav class="student-sidebar__links" aria-label="Account">'
-        self.assertIn(profile_link, student_sidebar)
-        self.assertGreater(student_sidebar.index(profile_link), student_sidebar.rindex('</section>'))
-        self.assertEqual(student_sidebar.count('>👤 Profile</a>'), 1)
+        self.assertNotIn('accounts:profile', student_sidebar)
+        self.assertNotIn('accounts:logout', student_sidebar)
+        self.assertIn('data-profile-form-link>👤 Profile', student_page)
+        self.assertIn('data-profile-form-link>🔒 Change password', student_page)
+        self.assertIn('Logout', student_page)
         self.assertIn('<h2 class="student-sidebar__heading" id="ai-learning-heading">', student_page)
         self.assertIn('<h2 class="student-sidebar__heading student-sidebar__heading--teacher" id="teacher-assisted-heading">', student_page)
         self.assertNotIn('student-sidebar__toggle', student_page)
@@ -230,9 +233,13 @@ class AuthenticationTests(TestCase):
         teacher_client = Client()
         teacher_client.force_login(teacher)
         teacher_page = teacher_client.get('/accounts/profile/').content.decode()
+        teacher_sidebar = teacher_page.split('<aside id="sidebar"', 1)[1].split('</aside>', 1)[0]
         for item in ('Teacher dashboard', 'My classes', 'Verify students',
-                     'Materials', 'Sessions', 'Messages', 'Teacher profile'):
+                     'Materials', 'Sessions', 'Messages'):
             self.assertIn(item, teacher_page)
+        self.assertNotIn('teachers:profile_edit', teacher_sidebar)
+        self.assertNotIn('accounts:profile', teacher_sidebar)
+        self.assertIn('data-profile-form-link>🎓 Teacher profile', teacher_page)
         for item in ('My Courses', 'AI Notes', 'Performance', 'Recommendations',
                      'Find Teachers', 'Teacher-Assigned Quizzes'):
             self.assertNotIn(item, teacher_page)

@@ -38,6 +38,22 @@ process take precedence over values in `.env` when they contain a non-empty
 key. Create or replace a key at [Google AI Studio](https://aistudio.google.com/apikey);
 never paste it into source code or commit it.
 
+Live classes also require `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and
+`LIVEKIT_API_SECRET` in this same root `.env` file (or in the server process
+environment). Settings load `.env` first; `.env.example` is only a template and
+is never read as runtime configuration. After changing these values, restart
+the Django development server or restart/redeploy the Django application
+process so settings reload. The classroom page reports missing variable names
+without showing their values. You can verify loaded settings safely with:
+
+```powershell
+python manage.py shell -c "from django.conf import settings; print({name: bool(getattr(settings, name)) for name in ('LIVEKIT_URL', 'LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET')})"
+```
+
+This check prints only whether each value is present. Use the actual LiveKit
+Cloud API credentials in `.env`; never put them in templates, JavaScript, or
+committed files.
+
 Run `python manage.py check_gemini_config` to safely check whether a key is
 configured and which source Django uses. This does not contact Google. Run
 `python manage.py diagnose_gemini` to test an actual Gemini request.
@@ -130,6 +146,7 @@ calculation, and recommendations.
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | `DisallowedHost` error | Your host/domain isn't in `ALLOWED_HOSTS` | Add it to `.env` or set the `ALLOWED_HOSTS` process variable |
+| Live classes report missing LiveKit configuration | `.env` is absent, a required variable is blank/placeholder, or Django has not restarted since it changed | Set `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET` in the root `.env` or process environment, restart Django, and use the safe presence check above |
 | Gemini reports `API_KEY_INVALID` | `.env` is missing, an old process environment key overrides it, or the configured key is invalid/revoked | Run `python manage.py check_gemini_config`; create a new key in Google AI Studio, update `GEMINI_API_KEY` in the root `.env` (or process environment), restart Django, then run `python manage.py diagnose_gemini` |
 | AI notes/MCQs cannot be generated | `.env` is missing or the Gemini request failed | Copy `.env.example` to `.env`, set a real key, restart the server, and run `python manage.py diagnose_gemini` |
 | `django.db.utils.OperationalError: no such table` | Migrations not applied | `python3 manage.py migrate` |
@@ -162,6 +179,26 @@ CerebroX-AI/
 ├── docs/                    architecture.md, api_documentation.md, database_design.md
 └── tests/                   21 tests, all passing (incl. cross-student isolation checks)
 ```
+
+## Live classroom recording
+
+Recording uses LiveKit Cloud room-composite Egress and a private S3-compatible
+bucket. Set `LIVEKIT_RECORDING_ENABLED=True` and configure the `LIVEKIT_RECORDING_S3_*`
+values in the root `.env`; leave `LIVEKIT_RECORDING_VERIFIED=False`. In LiveKit
+Cloud, configure the webhook URL `https://<your-domain>/market/livekit/webhook/`
+with the same LiveKit API credentials. Keep public bucket access blocked.
+
+While a real class is ongoing, run
+`python manage.py verify_livekit_recording --session-id <session-id> --consent-confirmed`.
+Use a live test session whose participants have explicitly consented. The command
+records that actual room, waits for Egress to finish, retrieves the private object
+through both storage credentials and its signed playback URL, then removes the test
+object. It does not change either enablement flag. After a successful test, set
+`LIVEKIT_RECORDING_VERIFIED=True` yourself if accepted, then restart Django. Recording
+controls remain unavailable until verification succeeds, the flag is explicitly enabled,
+and the server has reloaded settings. The LiveKit webhook
+must be reachable from LiveKit Cloud for ongoing status updates and recording
+completion callbacks.
 
 ## Scope note
 Per the FYP scope document, this build intentionally excludes OCR, voice

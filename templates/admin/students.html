@@ -1,24 +1,89 @@
 {% extends "layouts/admin_layout.html" %}
-{% block title %}Students — Admin{% endblock %}
+{% block title %}Student Performance & Rankings — Admin{% endblock %}
 {% block content %}
-<h1 class="font-display text-2xl font-bold mb-6">Students ({{ students|length }})</h1>
-<div class="glass overflow-hidden">
-  <table class="w-full text-sm">
-    <thead><tr class="text-left border-b" style="border-color:var(--line)">
-      <th class="p-3">Name</th><th class="p-3">Username</th><th class="p-3">Study Level</th><th class="p-3">XP</th><th class="p-3">Joined</th><th class="p-3"></th>
-    </tr></thead>
-    <tbody>
-      {% for s in students %}
-      <tr class="border-b" style="border-color:var(--line)">
-        <td class="p-3">{{ s.first_name }} {{ s.last_name }}</td>
-        <td class="p-3">{{ s.username }}</td>
-        <td class="p-3">{{ s.effective_study_level }}</td>
-        <td class="p-3">{{ s.xp_points }}</td>
-        <td class="p-3">{{ s.created_at|date:"M d, Y" }}</td>
-        <td class="p-3"><a href="{% url 'admin_panel:student_detail' s.id %}" class="text-xs grad-text">View →</a></td>
-      </tr>
-      {% empty %}<tr><td class="p-3" colspan="6">No students yet.</td></tr>{% endfor %}
-    </tbody>
-  </table>
-</div>
+<style>
+  .student-admin{--student-navy:#252044;--student-purple:#7041c3;--student-muted:#777187;max-width:1440px;margin:0 auto;color:var(--student-navy)}
+  .student-admin__header{margin:0 0 1rem}.student-admin__eyebrow{margin:0 0 .25rem;color:var(--student-purple);font-size:.68rem;font-weight:800;letter-spacing:.13em;text-transform:uppercase}
+  .student-admin__header h1{margin:0;font-size:clamp(1.45rem,2vw,2rem);font-weight:700}.student-admin__header p{margin:.3rem 0 0;color:var(--student-muted);font-size:.8rem}
+  .student-admin__section{margin-top:1.2rem}.student-admin__section-title{margin:0 0 .65rem;font-size:1rem;font-weight:700}
+  .student-admin__summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.65rem}
+  .student-admin__card{min-width:0;padding:.8rem .9rem;border:1px solid rgba(67,48,105,.13);border-radius:14px;background:rgba(255,255,255,.92);box-shadow:0 4px 14px rgba(40,33,61,.035)}
+  .student-admin__summary-label{margin:0;color:#5d5670;font-size:.7rem;font-weight:650}.student-admin__summary-value{margin:.35rem 0 .1rem;font-size:1.4rem;font-weight:750;line-height:1.1;font-variant-numeric:tabular-nums}.student-admin__summary-note{margin:0;color:var(--student-muted);font-size:.65rem;line-height:1.35}
+  .student-admin__top{position:relative;display:flex;min-height:104px;align-items:center;gap:1rem;margin:0 0 .8rem;padding:1rem 1.2rem;text-align:left;background:linear-gradient(145deg,rgba(255,255,255,.98),rgba(245,239,255,.95));border:1px solid rgba(112,65,195,.19);border-radius:16px;box-shadow:0 8px 24px rgba(67,48,105,.08)}
+  .student-admin__trophy{font-size:1.7rem;line-height:1}.student-admin__top-copy{min-width:0}.student-admin__top-label{margin:0 0 .2rem;color:#6942ad;font-size:.65rem;font-weight:800;letter-spacing:.09em;text-transform:uppercase}.student-admin__top-name{max-width:100%;overflow-wrap:anywhere;margin:.1rem 0;font-size:1.05rem;font-weight:750}.student-admin__top-xp{margin:.2rem 0 0;color:#5c5570;font-size:.8rem;font-weight:650}
+  .student-admin__podium{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.65rem}
+  .student-admin__podium-card{display:flex;min-width:0;flex-direction:column;align-items:center;justify-content:center;gap:.3rem;padding:.9rem .5rem;text-align:center;border:1px solid rgba(67,48,105,.13);border-radius:15px;background:rgba(255,255,255,.92)}
+  .student-admin__podium-card--gold{border-color:#e5c66e;background:linear-gradient(160deg,#fffdf3,#fff8df)}.student-admin__podium-card--silver{border-color:#ccd1db;background:linear-gradient(160deg,#fff,#f1f3f7)}.student-admin__podium-card--bronze{border-color:#d9a27f;background:linear-gradient(160deg,#fff9f3,#f9e8dc)}
+  .student-admin__medal{font-size:1.35rem;line-height:1}.student-admin__podium-name{max-width:100%;overflow:hidden;color:var(--student-navy);font-size:.78rem;font-weight:700;text-overflow:ellipsis;white-space:nowrap;text-decoration:none}.student-admin__podium-xp{color:var(--student-muted);font-size:.69rem}
+  .student-admin__avatar{display:grid;width:2.2rem;height:2.2rem;flex:0 0 auto;place-items:center;overflow:hidden;border:1px solid rgba(112,65,195,.2);border-radius:50%;background:linear-gradient(145deg,rgba(167,139,250,.2),rgba(101,123,216,.14));color:#5934a2;font-size:.7rem;font-weight:750}.student-admin__avatar img{width:100%;height:100%;object-fit:cover}
+  .student-admin__filters{display:grid;grid-template-columns:minmax(180px,1.5fr) repeat(4,minmax(120px,1fr)) auto;align-items:end;gap:.55rem;margin-bottom:.7rem;padding:.75rem;border:1px solid rgba(67,48,105,.12);border-radius:14px;background:rgba(255,255,255,.75)}
+  .student-admin__filter label{display:block;margin:0 0 .25rem;color:#5d5670;font-size:.66rem;font-weight:700}.student-admin__filter input,.student-admin__filter select{width:100%;min-height:2.35rem;box-sizing:border-box;border:1px solid rgba(67,48,105,.16);border-radius:9px;background:#fff;padding:.4rem .55rem;color:var(--student-navy);font:inherit;font-size:.74rem}
+  .student-admin__filter-actions{display:flex;gap:.4rem}.student-admin__filter-actions button,.student-admin__filter-actions a{display:inline-flex;min-height:2.35rem;align-items:center;justify-content:center;padding:.4rem .65rem;border:1px solid rgba(112,65,195,.2);border-radius:9px;background:#7041c3;color:#fff;font-size:.72rem;font-weight:700;text-decoration:none;cursor:pointer}.student-admin__filter-actions a{background:rgba(112,65,195,.06);color:#57329d}
+  .student-admin__table-wrap{overflow-x:auto;border:1px solid rgba(67,48,105,.13);border-radius:14px;background:rgba(255,255,255,.94)}.student-admin__table{width:100%;border-collapse:collapse;font-size:.73rem;white-space:nowrap}.student-admin__table th{padding:.65rem .7rem;background:rgba(112,65,195,.055);color:#59526d;text-align:left;font-size:.65rem;font-weight:750}.student-admin__table td{padding:.55rem .7rem;border-top:1px solid rgba(67,48,105,.09);vertical-align:middle}.student-admin__table tbody tr:hover{background:rgba(112,65,195,.035)}
+  .student-admin__rank{display:inline-grid;min-width:1.8rem;height:1.8rem;place-items:center;border:1px solid rgba(67,48,105,.13);border-radius:8px;background:#fff;color:#625a72;font-weight:750}.student-admin__rank--gold{border-color:#e5c66e;background:#fff5cc;color:#795d08}.student-admin__rank--silver{border-color:#c9ced8;background:#eef0f4;color:#515969}.student-admin__rank--bronze{border-color:#d9a27f;background:#f7e4d6;color:#805032}
+  .student-admin__identity{display:flex;align-items:center;gap:.55rem;min-width:150px}.student-admin__identity a{color:#4f2e92;font-weight:700;text-decoration:none}.student-admin__identity a:hover{text-decoration:underline}.student-admin__identity small{display:block;max-width:180px;overflow:hidden;color:var(--student-muted);font-size:.63rem;text-overflow:ellipsis}
+  .student-admin__xp{font-weight:750;font-variant-numeric:tabular-nums}.student-admin__empty{padding:1rem;color:var(--student-muted);font-size:.76rem;text-align:center}
+  .student-admin__pagination{display:flex;align-items:center;justify-content:space-between;gap:.7rem;margin-top:.7rem;color:var(--student-muted);font-size:.7rem}.student-admin__pagination a{padding:.35rem .6rem;border:1px solid rgba(67,48,105,.15);border-radius:8px;background:#fff;color:#5934a2;font-weight:700;text-decoration:none}.student-admin__pagination a[aria-disabled="true"]{opacity:.45;pointer-events:none}
+  @media(max-width:1050px){.student-admin__filters{grid-template-columns:repeat(3,minmax(0,1fr))}.student-admin__filter--search{grid-column:span 2}}
+  @media(max-width:680px){.student-admin__top{min-height:90px;padding:.8rem}.student-admin__filters{grid-template-columns:repeat(2,minmax(0,1fr))}.student-admin__filter--search{grid-column:span 2}}
+  @media(max-width:400px){.student-admin__summary{grid-template-columns:1fr 1fr}.student-admin__podium{gap:.35rem}.student-admin__podium-card{padding:.7rem .25rem}.student-admin__filters{grid-template-columns:1fr}.student-admin__filter--search{grid-column:auto}.student-admin__filter-actions{grid-column:auto}}
+</style>
+<main class="student-admin">
+  <header class="student-admin__header"><p class="student-admin__eyebrow">Student management</p><h1>Student Performance &amp; Rankings</h1><p>Rankings use stored XP points. Quiz averages include completed quizzes only.</p></header>
+
+  {% if top_student %}<section class="student-admin__section" aria-label="Top performer">
+    <article class="student-admin__top"><span class="student-admin__trophy" aria-hidden="true">🏆</span><span class="student-admin__avatar">{% if top_student.avatar %}<img src="{{ top_student.avatar.url }}" alt="">{% else %}{{ top_student.first_name|default:top_student.username|slice:":1"|upper }}{% endif %}</span><div class="student-admin__top-copy"><p class="student-admin__top-label">Top Performer · Rank #1</p><a class="student-admin__top-name" href="{% url 'admin_panel:student_detail' top_student.pk %}">{{ top_student.get_full_name|default:top_student.username }}</a><p class="student-admin__top-xp">{{ top_student.xp_points }} XP</p></div></article>
+  </section>{% endif %}
+
+  <section class="student-admin__section" aria-label="Student performance summary">
+    <div class="student-admin__summary">
+      <article class="student-admin__card"><p class="student-admin__summary-label">Total Students</p><p class="student-admin__summary-value">{{ total_students }}</p><p class="student-admin__summary-note">All registered student accounts</p></article>
+      <article class="student-admin__card"><p class="student-admin__summary-label">Active Students</p><p class="student-admin__summary-value">{{ active_students }}</p><p class="student-admin__summary-note">Logged in within the last 30 days</p></article>
+    </div>
+  </section>
+
+  <section class="student-admin__section" aria-labelledby="student-leaderboard-title">
+    <h2 class="student-admin__section-title" id="student-leaderboard-title">XP Leaderboard</h2>
+    {% if top_student %}
+    <div class="student-admin__podium" aria-label="Top three students">
+        {% for student in top_students %}<article class="student-admin__podium-card {% if student.rank == 1 %}student-admin__podium-card--gold{% elif student.rank == 2 %}student-admin__podium-card--silver{% elif student.rank == 3 %}student-admin__podium-card--bronze{% endif %}">
+          <span class="student-admin__medal" aria-hidden="true">{% if student.rank == 1 %}🥇{% elif student.rank == 2 %}🥈{% else %}🥉{% endif %}</span>
+          <span class="student-admin__avatar">{% if student.avatar %}<img src="{{ student.avatar.url }}" alt="">{% else %}{{ student.first_name|default:student.username|slice:":1"|upper }}{% endif %}</span>
+          <a class="student-admin__podium-name" href="{% url 'admin_panel:student_detail' student.pk %}">{{ student.get_full_name|default:student.username }}</a>
+          <span class="student-admin__podium-xp">{{ student.xp_points }} XP · Rank #{{ student.rank }}</span>
+        </article>{% endfor %}
+    </div>
+    {% if top_student.xp_points == 0 %}<p class="student-admin__empty">No students have earned XP yet. Rankings currently reflect the stored zero XP values.</p>{% endif %}
+    {% else %}<p class="student-admin__empty">No students are available to rank yet.</p>{% endif %}
+  </section>
+
+  <section class="student-admin__section" aria-labelledby="student-performance-title">
+    <h2 class="student-admin__section-title" id="student-performance-title">Student Performance</h2>
+    <form method="get" class="student-admin__filters">
+      <div class="student-admin__filter student-admin__filter--search"><label for="student-search">Search name or email</label><input id="student-search" type="search" name="q" value="{{ query }}" placeholder="Student name or email"></div>
+      <div class="student-admin__filter"><label for="student-rank">XP ranking</label><select id="student-rank" name="rank">{% for value,label in rank_filters %}<option value="{{ value }}" {% if rank_filter == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+      <div class="student-admin__filter"><label for="student-sort">Sort XP</label><select id="student-sort" name="sort"><option value="highest" {% if sort_order == 'highest' %}selected{% endif %}>Highest first</option><option value="lowest" {% if sort_order == 'lowest' %}selected{% endif %}>Lowest first</option></select></div>
+      <div class="student-admin__filter"><label for="student-joined">Registration date</label><select id="student-joined" name="joined"><option value="all" {% if joined_filter == 'all' %}selected{% endif %}>Any time</option><option value="30" {% if joined_filter == '30' %}selected{% endif %}>Last 30 days</option><option value="90" {% if joined_filter == '90' %}selected{% endif %}>Last 90 days</option><option value="365" {% if joined_filter == '365' %}selected{% endif %}>Last year</option></select></div>
+      <div class="student-admin__filter"><label for="student-activity">Login activity</label><select id="student-activity" name="activity"><option value="all" {% if activity_filter == 'all' %}selected{% endif %}>Any activity</option><option value="active" {% if activity_filter == 'active' %}selected{% endif %}>Logged in within 30 days</option><option value="inactive" {% if activity_filter == 'inactive' %}selected{% endif %}>No login within 30 days</option></select></div>
+      <div class="student-admin__filter-actions"><button type="submit">Apply</button><a href="{% url 'admin_panel:students' %}">Reset</a></div>
+    </form>
+
+    <div class="student-admin__table-wrap"><table class="student-admin__table">
+      <thead><tr><th scope="col">Rank</th><th scope="col">Student</th><th scope="col">XP</th><th scope="col">Quizzes attempted</th><th scope="col">Average score</th><th scope="col">Courses</th><th scope="col">Registered</th></tr></thead>
+      <tbody>{% for s in students %}<tr>
+        <td><span class="student-admin__rank {% if s.rank == 1 %}student-admin__rank--gold{% elif s.rank == 2 %}student-admin__rank--silver{% elif s.rank == 3 %}student-admin__rank--bronze{% endif %}">#{{ s.rank }}</span></td>
+        <td><div class="student-admin__identity"><span class="student-admin__avatar">{% if s.avatar %}<img src="{{ s.avatar.url }}" alt="">{% else %}{{ s.first_name|default:s.username|slice:":1"|upper }}{% endif %}</span><div><a href="{% url 'admin_panel:student_detail' s.pk %}">{{ s.get_full_name|default:s.username }}</a><small>@{{ s.username }}</small></div></div></td>
+        <td class="student-admin__xp">{{ s.xp_points }}</td><td>{% if s.quiz_attempts %}{{ s.quiz_attempts }}{% else %}<span title="No completed quiz history">0 · none yet</span>{% endif %}</td>
+        <td>{% if s.average_quiz_score != None %}{{ s.average_quiz_score|floatformat:1 }}%{% else %}—{% endif %}</td><td>{{ s.course_count }}</td><td>{{ s.created_at|date:"M j, Y" }}</td>
+      </tr>{% empty %}<tr><td class="student-admin__empty" colspan="7">{% if query or rank_filter != 'all' or joined_filter != 'all' or activity_filter != 'all' %}No students match these filters.{% else %}No students have registered yet.{% endif %}</td></tr>{% endfor %}</tbody>
+    </table></div>
+
+    {% if page_obj.paginator.num_pages > 1 %}<nav class="student-admin__pagination" aria-label="Student results pages">
+      <span>Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }} · {{ page_obj.paginator.count }} students</span><div>
+        {% if page_obj.has_previous %}<a href="?q={{ query|urlencode }}&amp;rank={{ rank_filter }}&amp;sort={{ sort_order }}&amp;joined={{ joined_filter }}&amp;activity={{ activity_filter }}&amp;page={{ page_obj.previous_page_number }}">Previous</a>{% else %}<a aria-disabled="true">Previous</a>{% endif %}
+        {% if page_obj.has_next %}<a href="?q={{ query|urlencode }}&amp;rank={{ rank_filter }}&amp;sort={{ sort_order }}&amp;joined={{ joined_filter }}&amp;activity={{ activity_filter }}&amp;page={{ page_obj.next_page_number }}">Next</a>{% else %}<a aria-disabled="true">Next</a>{% endif %}
+      </div>
+    </nav>{% endif %}
+  </section>
+</main>
 {% endblock %}

@@ -100,8 +100,25 @@
       <form method="post" action="{% url 'market:guidance_send' %}" class="guidance-compose__form">
         {% csrf_token %}
         <div>
-          <label class="label" for="{{ compose_form.recipient.id_for_label }}">Recipient</label>
+          <label class="label" for="guidance-recipient-search">Recipient</label>
           {{ compose_form.recipient }}
+          <div class="guidance-recipient-picker" data-recipient-picker
+               data-search-url="{% url 'market:guidance_recipient_search' %}">
+            <input class="field" id="guidance-recipient-search" type="search" autocomplete="off"
+                   placeholder="Search by name, username or email" role="combobox" aria-autocomplete="list"
+                   aria-expanded="false" aria-controls="guidance-recipient-results"
+                   aria-describedby="guidance-recipient-status"
+                   value="{% if selected_recipient %}{{ selected_recipient.get_full_name|default:selected_recipient.username }}{% endif %}"
+                   data-recipient-search>
+            <div class="guidance-recipient-results" id="guidance-recipient-results" role="listbox"
+                 data-recipient-results hidden></div>
+            <p class="guidance-recipient-status" id="guidance-recipient-status" aria-live="polite"
+               data-recipient-status>{% if selected_recipient %}Selected recipient: {{ selected_recipient.get_full_name|default:selected_recipient.username }}{% else %}Type at least two characters to search.{% endif %}</p>
+            <div class="guidance-recipient-selected" data-recipient-selected {% if not selected_recipient %}hidden{% endif %}>
+              <span>To:</span> <strong data-recipient-selected-name>{% if selected_recipient %}{{ selected_recipient.get_full_name|default:selected_recipient.username }}{% endif %}</strong>
+              <button type="button" class="guidance-recipient-clear" data-recipient-clear aria-label="Change recipient">Change</button>
+            </div>
+          </div>
           {{ compose_form.recipient.errors }}
         </div>
         <div>

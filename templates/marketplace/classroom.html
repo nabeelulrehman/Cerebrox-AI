@@ -1,0 +1,131 @@
+{% extends "layouts/dashboard_layout.html" %}
+{% load static %}
+{% block title %}{{ session.title }} | Live classroom{% endblock %}
+{% block body_class %}live-classroom-page{% endblock %}
+{% block page_layout_class %}live-classroom-layout{% endblock %}
+{% block sidebar %}{% endblock %}
+{% block footer %}{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'css/live_classroom.css' %}?v=10">
+{% endblock %}
+{% block content %}
+<main class="live-classroom" data-classroom
+      data-token-url="{% url 'market:session_token' session.id %}"
+      data-session-title="{{ session.title }}"
+      data-teacher-identity="{{ teacher_identity }}"
+      data-is-teacher="{{ is_teacher|yesno:'true,false' }}"
+      data-recording-status-url="{% url 'market:session_recording_status' session.id %}"
+      data-recording-start-url="{% url 'market:session_recording_start' session.id %}"
+      data-recording-stop-url="{% url 'market:session_recording_stop' session.id %}"
+      data-recording-play-url="{% url 'market:session_recording_play' session.id %}"
+      data-recording-ready="{{ recording_ready|yesno:'true,false' }}">
+  <header class="classroom-header">
+    <div>
+      <a class="classroom-back" href="{% url 'market:session_detail' session.id %}">← Session details</a>
+      <h1>{{ session.title }}</h1>
+      <p>{{ session.subject|default:"Live classroom" }} · {{ session.teacher.get_full_name|default:session.teacher.username }}</p>
+    </div>
+    <span class="classroom-state" data-connection-state>Connecting…</span>
+  </header>
+
+  {% if not livekit_ready %}
+    <section class="classroom-notice" role="status">
+      Live classes are unavailable. Check the server configuration:
+      {{ livekit_configuration_issues|join:"; " }}.
+    </section>
+  {% endif %}
+
+  <section class="classroom-main">
+    <div class="classroom-stage">
+      <section class="classroom-screen-stage" data-screen-share-stage hidden aria-label="Shared screen">
+        <header class="classroom-screen-header">
+          <h2 data-screen-share-title>Screen share</h2>
+          <span data-screen-share-status></span>
+        </header>
+        <div class="classroom-screen-video" data-screen-share-video></div>
+      </section>
+      <div class="classroom-grid" data-video-grid aria-live="polite">
+        <p class="classroom-placeholder" data-empty-state>Connecting to the classroom…</p>
+      </div>
+      <div class="classroom-toolbar">
+        <button type="button" class="classroom-control" data-microphone disabled>Enable microphone</button>
+        <button type="button" class="classroom-control" data-camera data-enabled="false" aria-pressed="false" disabled>
+          <svg class="classroom-control-icon" data-camera-icon viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M4 6h10a2 2 0 0 1 2 2v2l4-3v10l-4-3v2a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z" />
+            <path data-icon-off d="m3 3 18 18" />
+          </svg>
+          <span data-camera-label>Enable camera</span>
+        </button>
+        <button type="button" class="classroom-control" data-screen-share disabled>Share screen</button>
+        <button type="button" class="classroom-control" data-raise-hand disabled>Raise hand</button>
+        <a class="classroom-control classroom-leave" href="{% url 'market:session_detail' session.id %}" data-leave>Leave class</a>
+        {% if is_teacher %}
+          <form method="post" action="{% url 'market:session_end' session.id %}">
+            {% csrf_token %}<button class="classroom-control classroom-end">End class</button>
+          </form>
+        {% endif %}
+      </div>
+      <p class="classroom-error" data-classroom-error role="alert"></p>
+    </div>
+
+    <aside class="classroom-panel">
+      <section>
+        <h2>Participants <span data-participant-count>0</span></h2>
+        <ul class="classroom-participants" data-participant-list></ul>
+      </section>
+      <section class="classroom-chat">
+        <h2>Class chat</h2>
+        <ol class="classroom-messages" data-chat-messages aria-live="polite"></ol>
+        <form data-chat-form>
+          {% csrf_token %}
+          <label class="sr-only" for="classroom-message">Message</label>
+          <div class="classroom-chat-entry">
+            <input id="classroom-message" name="message" maxlength="1000" autocomplete="off" placeholder="Write a message…" disabled>
+            <button type="submit" disabled>Send</button>
+          </div>
+        </form>
+      </section>
+    </aside>
+  </section>
+  <section class="classroom-recording" data-recording-panel aria-live="polite">
+    <div>
+      <h2>Class recording</h2>
+      <p data-recording-status>{{ recording_status }}</p>
+      {% if recording_error %}<p class="classroom-error">{{ recording_error }}</p>{% endif %}
+    </div>
+    <div class="classroom-recording-actions" data-recording-actions data-is-teacher="{{ is_teacher|yesno:'true,false' }}">
+      {% if is_teacher %}
+        <span class="classroom-recording-unavailable" data-recording-unavailable {% if recording_ready %}hidden{% endif %}>
+          Recording is unavailable: {{ recording_issues|join:"; " }}.
+        </span>
+      {% endif %}
+      {% if session.recording_status == 'failed' and recording_error %}<p class="classroom-error" data-recording-error>{{ recording_error }}</p>{% endif %}
+      {% if session.recording_status == 'completed' and recording_ready %}
+        <a class="classroom-control" data-recording-play href="{% url 'market:session_recording_play' session.id %}">Play recording</a>
+      {% endif %}
+      {% if is_teacher and recording_ready %}
+        {% if session.recording_status == 'recording' %}
+          <form method="post" action="{% url 'market:session_recording_stop' session.id %}" data-recording-stop-form>
+            {% csrf_token %}<button class="classroom-control classroom-end">Stop recording</button>
+          </form>
+        {% elif session.recording_status == 'starting' or session.recording_status == 'stopping' %}
+          <span class="classroom-control" data-recording-progress>Recording {{ session.get_recording_status_display|lower }}…</span>
+        {% else %}
+          <form method="post" action="{% url 'market:session_recording_start' session.id %}" data-recording-start-form>
+            {% csrf_token %}
+            <label><input type="checkbox" name="recording_consent" required> I have informed everyone and obtained their consent to record.</label>
+            <button class="classroom-control">Start recording</button>
+          </form>
+        {% endif %}
+      {% endif %}
+    </div>
+  </section>
+  <p class="classroom-notice" data-recording-notice role="status" aria-live="assertive" hidden></p>
+</main>
+{% endblock %}
+{% block extra_js %}
+{% if livekit_ready %}
+<script src="https://cdn.jsdelivr.net/npm/livekit-client@2.23.0/dist/livekit-client.umd.min.js" defer></script>
+<script src="{% static 'js/live_classroom.js' %}?v=11" defer></script>
+{% endif %}
+{% endblock %}

@@ -69,48 +69,53 @@ select.field option{ background:#fff; color:var(--txt); }
 .site-header-actions{ min-width:0; flex:0 1 auto; }
 .site-brand{ min-width:0; white-space:nowrap; }
 .site-brand span{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.site-user-link{ color:#7041c3; font-weight:600; }
-.site-user-link:hover{ background:rgba(167,139,250,.12); color:#5d32a8; }
+.site-profile-menu{ position:relative; display:flex; align-items:center; gap:.65rem; }
+.site-profile-name{ max-width:clamp(4rem,18vw,12rem); overflow:hidden; color:#7041c3; font-size:.875rem; font-weight:600; text-overflow:ellipsis; white-space:nowrap; }
 .site-avatar{ display:grid; width:2.75rem; height:2.75rem; flex:0 0 auto; place-items:center; overflow:hidden; padding:0; border:1px solid rgba(112,65,195,.24); border-radius:50%; background:linear-gradient(145deg,rgba(167,139,250,.18),rgba(101,123,216,.12)); box-shadow:0 2px 6px rgba(40,33,61,.12); color:inherit; cursor:pointer; text-decoration:none; }
 .site-avatar:focus-visible{ outline:2px solid #7041c3; outline-offset:3px; }
 .site-avatar__image{ display:block; width:100%; height:100%; border-radius:inherit; object-fit:cover; }
 .site-avatar__initials{ color:#5d32a8; font-size:.78rem; font-weight:700; line-height:1; }
-.site-avatar-dialog{ position:fixed; inset:0; display:grid; width:100%; max-width:none; height:100%; max-height:none; margin:0; padding:1.5rem; place-items:center; overflow:auto; border:0; background:transparent; }
-.site-avatar-dialog:not([open]){ display:none; }
-.site-avatar-dialog::backdrop{ background:rgba(16,13,27,.78); backdrop-filter:blur(3px); }
-.site-avatar-dialog[open]::backdrop{ animation:site-avatar-backdrop-in .2s ease-out both; }
-.site-avatar-dialog__panel{ position:relative; max-width:min(92vw,900px); max-height:88dvh; transform:scale(.96); animation:site-avatar-preview-in .2s ease-out forwards; }
-.site-avatar-dialog.is-closing::backdrop{ animation:site-avatar-backdrop-out .16s ease-in both; }
-.site-avatar-dialog.is-closing .site-avatar-dialog__panel{ animation:site-avatar-preview-out .16s ease-in forwards; }
-.site-avatar-dialog__image{ display:block; width:auto; height:auto; max-width:min(92vw,900px); max-height:88dvh; border:1px solid rgba(255,255,255,.24); border-radius:14px; object-fit:contain; box-shadow:0 18px 60px rgba(0,0,0,.4); }
-.site-avatar-dialog__close{ position:absolute; z-index:1; top:.75rem; right:.75rem; display:grid; width:2.5rem; height:2.5rem; place-items:center; border:1px solid rgba(255,255,255,.28); border-radius:50%; background:rgba(20,17,31,.72); color:#fff; cursor:pointer; transition:background-color .16s ease,transform .16s ease; }
-.site-avatar-dialog__close:hover{ transform:scale(1.05); background:rgba(20,17,31,.92); }
-.site-avatar-dialog__close:focus-visible{ outline:2px solid #fff; outline-offset:3px; }
-.site-avatar-dialog__close svg{ width:1.2rem; height:1.2rem; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; }
-@keyframes site-avatar-preview-in{ to{ transform:scale(1); } }
-@keyframes site-avatar-preview-out{ to{ opacity:0; transform:scale(.96); } }
-@keyframes site-avatar-backdrop-in{ from{ opacity:0; } to{ opacity:1; } }
-@keyframes site-avatar-backdrop-out{ to{ opacity:0; } }
-@media(prefers-reduced-motion:reduce){ .site-avatar-dialog__panel{ animation:none; transform:none; } }
-.site-logout-button{ gap:.45rem; border-color:#bd3348; background:#bd3348; color:#fff; padding:.55rem .9rem; transition:background-color .18s ease,border-color .18s ease,transform .18s ease; }
-.site-logout-button:hover{ border-color:#9e263a; background:#9e263a; color:#fff; }
-.site-logout-button:focus-visible{ outline:2px solid #bd3348; outline-offset:2px; }
-.site-logout-button svg{ width:1rem; height:1rem; fill:none; stroke:currentColor; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
+.site-profile-dropdown{ position:absolute; z-index:60; top:calc(100% + .65rem); right:0; width:min(18rem,calc(100vw - 2rem)); box-sizing:border-box; padding:.5rem; border:1px solid var(--line); border-radius:14px; background:var(--panel); box-shadow:0 12px 32px rgba(40,33,61,.18); }
+.site-profile-dropdown[hidden]{ display:none; }
+.site-profile-dropdown__identity{ display:flex; flex-direction:column; gap:.2rem; min-width:0; padding:.65rem .7rem .75rem; border-bottom:1px solid var(--line); }
+.site-profile-dropdown__identity strong,.site-profile-dropdown__identity span{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.site-profile-dropdown__identity strong{ color:var(--txt); font-size:.9rem; }
+.site-profile-dropdown__identity span{ color:var(--txt-dim); font-size:.78rem; }
+.site-profile-dropdown > a{ display:flex; align-items:center; gap:.55rem; min-height:2.5rem; padding:.5rem .7rem; border-radius:9px; color:var(--txt-dim); font-size:.84rem; text-decoration:none; }
+.site-profile-dropdown > a:hover,.site-profile-dropdown > a:focus-visible{ background:var(--fill); color:var(--txt); outline:none; }
+.site-profile-dropdown > .site-profile-dropdown__logout{ margin-top:.35rem; border-top:1px solid var(--line); border-radius:0 0 9px 9px; color:#bd3348; font-weight:600; }
+.site-profile-dropdown > .site-profile-dropdown__logout:hover,.site-profile-dropdown > .site-profile-dropdown__logout:focus-visible{ background:rgba(189,51,72,.08); color:#9e263a; }
+.site-profile-dropdown__logout svg{ width:1rem; height:1rem; fill:none; stroke:currentColor; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
+.site-profile-dialog{ position:fixed; inset:0; width:min(42rem,calc(100vw - 2rem)); max-width:none; max-height:min(90dvh,52rem); margin:auto; padding:0; overflow:visible; border:0; border-radius:18px; background:transparent; color:var(--txt); }
+.site-profile-dialog::backdrop{ background:rgba(16,13,27,.56); backdrop-filter:blur(3px); }
+.site-profile-dialog__panel{ position:relative; max-height:min(90dvh,52rem); overflow:auto; padding:1.5rem; border:1px solid var(--line); border-radius:18px; background:var(--panel); box-shadow:0 20px 60px rgba(20,17,31,.28); }
+.site-profile-dialog__close{ position:sticky; z-index:2; top:0; float:right; display:grid; width:2.25rem; height:2.25rem; margin:-.5rem -.5rem .25rem .5rem; place-items:center; border:1px solid var(--line); border-radius:50%; background:var(--panel); color:var(--txt-dim); font-size:1.5rem; line-height:1; cursor:pointer; }
+.site-profile-dialog__close:hover,.site-profile-dialog__close:focus-visible{ border-color:var(--line-strong); background:var(--fill); color:var(--txt); outline:none; }
+.site-profile-dialog__content{ clear:both; }
+.site-profile-dialog__content > .page-content{ padding-bottom:0; }
+.site-profile-dialog__content > .page-content > h1{ margin-top:0; }
+.site-profile-dialog__content > .page-content > .glass{ max-width:none; }
+.site-profile-dialog__content > .page-content > .glass > .grad-line,
+.site-profile-dialog__content > .page-content > .glass > .flex.gap-3,
+.site-profile-dialog__content > .page-content > p.text-xs{ display:none; }
+.site-profile-dialog__content .glass{ padding:1rem; }
+.site-profile-dialog__status{ margin:.5rem 0 0; color:#bd3348; font-size:.875rem; }
+.site-profile-dialog__status:empty{ display:none; }
 @media(max-width:480px){
   .site-brand{ gap:.4rem; font-size:1rem; }
   .site-brand__icon{ width:1.75rem; height:1.75rem; }
-  .site-user-link{ box-sizing:border-box; max-width:clamp(2rem,18vw,5rem); min-width:0; overflow:hidden; padding:.3rem; text-overflow:ellipsis; white-space:nowrap; }
+  .site-profile-name{ max-width:clamp(2rem,18vw,5rem); }
   .site-avatar{ width:2.5rem; height:2.5rem; }
-  .site-logout-button{ gap:.3rem; padding:.45rem .55rem; font-size:.8rem; }
+  .site-profile-dialog{ width:calc(100vw - 1rem); max-height:94dvh; }
+  .site-profile-dialog__panel{ max-height:94dvh; padding:1rem; }
 }
 @media(max-width:360px){
   .site-header-actions{ gap:.25rem; }
   .site-brand{ gap:.3rem; font-size:.9rem; }
   .site-brand__icon{ width:1.5rem; height:1.5rem; }
-  .site-user-link{ max-width:2.25rem; padding:.2rem; font-size:.75rem; }
+  .site-profile-menu{ gap:.35rem; }
+  .site-profile-name{ max-width:2.25rem; font-size:.75rem; }
   .site-avatar{ width:2.25rem; height:2.25rem; }
-  .site-logout-button{ gap:.2rem; padding:.35rem .4rem; font-size:.75rem; }
-  .site-logout-button svg{ width:.875rem; height:.875rem; }
 }
 .bar-track{ height:8px; border-radius:999px; background:var(--fill-2); overflow:hidden; }
 .bar-fill{ height:100%; border-radius:999px; background:var(--grad); }
