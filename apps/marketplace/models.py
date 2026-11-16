@@ -2,10 +2,12 @@
 Nothing in the independent-learning apps depends on this module."""
 import os
 import uuid
+from datetime import timedelta
 
 from django.conf import settings
 from django.db import models
 from django.db.models import Q
+from django.utils import timezone
 from .storage import PrivateMediaStorage
 
 # Files live OUTSIDE MEDIA_ROOT/MEDIA_URL: they are only reachable through the
@@ -22,6 +24,45 @@ def _payment_ref():
     return uuid.uuid4().hex[:12].upper()
 
 
+def pending_upload_expiry():
+    return timezone.now() + timedelta(minutes=15)
+
+
+class PendingObjectUpload(models.Model):
+    """Short-lived, owner-bound upload authorization for direct object storage writes."""
+    class Purpose(models.TextChoices):
+        RESOURCE = 'resource', 'Teacher resource'
+        AVATAR = 'avatar', 'Profile avatar'
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                               related_name='pending_object_uploads')
+    purpose = models.CharField(max_length=12, choices=Purpose.choices)
+    object_key = models.CharField(max_length=255, unique=True)
+    # Server-only immutable scan input copied from the browser-writable key.
+    scan_key = models.CharField(max_length=255, blank=True, null=True, unique=True)
+    final_key = models.CharField(max_length=255, unique=True)
+    original_name = models.CharField(max_length=255)
+    content_type = models.CharField(max_length=128)
+    size = models.PositiveBigIntegerField()
+    metadata = models.JSONField(default=dict, blank=True)
+    resource = models.OneToOneField(
+        'Resource', null=True, blank=True, related_name='pending_scan_upload',
+        on_delete=models.SET_NULL,
+    )
+    expires_at = models.DateTimeField(default=pending_upload_expiry, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f'{self.purpose} upload for user {self.owner_id}'
+
+
+class OrphanedAvatar(models.Model):
+    """Retryable deletion record for an avatar no longer referenced by any user."""
+    storage_key = models.CharField(max_length=255, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
 class Resource(models.Model):
     class Visibility(models.TextChoices):
         DRAFT = 'draft', 'Private draft'
@@ -29,11 +70,25 @@ class Resource(models.Model):
         PUBLIC = 'public', 'Public educational resource'
         PAID = 'paid', 'Paid (verified purchase required)'
 
+    class ScanStatus(models.TextChoices):
+        PENDING = 'pending', 'Waiting for virus scan'
+        SCANNING = 'scanning', 'Virus scan in progress'
+        CLEAN = 'clean', 'Scan passed'
+        INFECTED = 'infected', 'Rejected by virus scan'
+        FAILED = 'failed', 'Virus scan failed; awaiting retry'
+
     teacher = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='resources', on_delete=models.CASCADE)
     title = models.CharField(max_length=160)
     description = models.TextField(blank=True)
     file = models.FileField(storage=private_storage, upload_to=_upload_to)
     original_name = models.CharField(max_length=255, blank=True)
+    scan_status = models.CharField(
+        max_length=10, choices=ScanStatus.choices, default=ScanStatus.CLEAN, db_index=True,
+    )
+    scan_attempts = models.PositiveSmallIntegerField(default=0)
+    scan_started_at = models.DateTimeField(null=True, blank=True)
+    scan_completed_at = models.DateTimeField(null=True, blank=True)
+    scan_error = models.CharField(max_length=160, blank=True)
     visibility = models.CharField(max_length=8, choices=Visibility.choices, default=Visibility.DRAFT, db_index=True)
     price = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
     classrooms = models.ManyToManyField('classrooms.Classroom', related_name='resources', blank=True)

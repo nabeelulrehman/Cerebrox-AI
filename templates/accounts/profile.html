@@ -8,8 +8,11 @@
 {% block content %}
 <h1 class="font-display text-2xl font-bold mb-6">Your profile</h1>
 <div class="glass p-6 max-w-xl">
-  <form method="post" enctype="multipart/form-data" class="flex flex-col gap-4">
+  <form method="post" enctype="multipart/form-data" class="flex flex-col gap-4"
+        {% if direct_avatar_upload %}data-avatar-upload-url="{% url 'accounts:avatar_upload_start' %}"{% endif %}>
     {% csrf_token %}
+    {% if avatar_upload_id %}<input type="hidden" name="avatar_upload_id" value="{{ avatar_upload_id }}">{% endif %}
+    {{ form.non_field_errors }}
     <div class="grid grid-cols-2 gap-3">
       <div><label class="label">First name</label>{{ form.first_name }}</div>
       <div><label class="label">Last name</label>{{ form.last_name }}</div>
@@ -26,6 +29,7 @@
       {{ form.avatar.errors }}
       <p class="profile-avatar-help">Choose a JPEG, PNG, or WebP image up to 5 MB. You can adjust a square crop before saving.</p>
       <div class="profile-avatar-crop__error" role="alert" aria-live="polite" data-profile-crop-error hidden></div>
+      {% if direct_avatar_upload %}<progress data-avatar-upload-progress max="100" value="0" hidden></progress><p data-avatar-upload-status role="status" aria-live="polite" hidden></p>{% endif %}
     </div>
     <button class="btn btn-primary w-max mt-2" type="submit">Save changes</button>
   </form>
@@ -78,4 +82,5 @@
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.js" defer></script>
 <script src="{% static 'js/profile_avatar_crop.js' %}?v=4" defer></script>
+{% if direct_avatar_upload %}<script src="{% static 'js/profile_avatar_upload.js' %}" defer></script>{% endif %}
 {% endblock %}

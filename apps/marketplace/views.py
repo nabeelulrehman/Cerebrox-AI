@@ -1,10 +1,13 @@
 import mimetypes
+import os
+import uuid
 from datetime import timedelta
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.conf import settings
 from django.core.exceptions import PermissionDenied
+from django.db import transaction
 from django.db.models import Prefetch, Q
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -12,18 +15,22 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
+from botocore.exceptions import ClientError
 
 from apps.accounts.permissions import admin_required, verified_teacher_required
 from apps.teachers.models import TeacherProfile
 from . import services
 from .forms import (
-    GuidanceComposeForm, GuidanceForm, GuidanceReplyForm, ResourceForm, ReviewForm, SessionForm,
+    GuidanceComposeForm, GuidanceForm, GuidanceReplyForm, ResourceForm, ResourceMetadataForm,
+    ReviewForm, SessionForm,
 )
 from .models import (
     GuidanceMessage, Resource, Payment, GuidanceRequest, TeachingSession, SessionBooking,
-    SessionAttendance, Review,
+    SessionAttendance, Review, PendingObjectUpload,
 )
 from .services import MarketError
+from .uploads import issue_upload_url, snapshot_uploaded_object, validate_resource_content, verify_uploaded_object
+from .storage import object_storage_client
 
 
 def _student(request):
@@ -40,12 +47,22 @@ def _approved_teacher_or_404(teacher_profile_id):
 
 def public_resources(request):
     qs = Resource.objects.filter(visibility__in=[Resource.Visibility.PUBLIC, Resource.Visibility.PAID],
+                                 scan_status=Resource.ScanStatus.CLEAN,
                                  teacher__teacher_profile__verification_status=TeacherProfile.Status.APPROVED)
     return render(request, 'marketplace/resources.html', {'resources': qs.select_related('teacher')})
 
 
 @verified_teacher_required
 def teacher_resources(request):
+    if settings.USE_OBJECT_STORAGE:
+        form = ResourceMetadataForm(request.POST or None, teacher=request.user)
+        return render(request, 'marketplace/teacher_resources.html', {
+            'form': form,
+            'resources': Resource.objects.filter(teacher=request.user),
+            'direct_upload': True,
+            'MATERIAL_MAX_MB': settings.MATERIAL_MAX_MB,
+        })
+
     form = ResourceForm(request.POST or None, request.FILES or None, teacher=request.user)
     if request.method == 'POST' and form.is_valid():
         r = form.save(commit=False)
@@ -55,15 +72,147 @@ def teacher_resources(request):
         messages.success(request, 'Resource saved.')
         return redirect('market:teacher_resources')
     return render(request, 'marketplace/teacher_resources.html',
-                  {'form': form, 'resources': Resource.objects.filter(teacher=request.user)})
+                  {'form': form, 'resources': Resource.objects.filter(teacher=request.user), 'direct_upload': False})
+
+
+@verified_teacher_required
+@require_POST
+def resource_upload_start(request):
+    if not settings.USE_OBJECT_STORAGE:
+        return JsonResponse({'error': 'Persistent object storage is not configured.'}, status=503)
+
+    filename = os.path.basename(request.POST.get('file_name', '').replace('\\', '/')).strip()
+    try:
+        size = int(request.POST.get('file_size', ''))
+    except (TypeError, ValueError):
+        size = 0
+    if not filename or len(filename) > 255 or any(ord(char) < 32 for char in filename):
+        return JsonResponse({'error': 'Choose a valid file name.'}, status=400)
+    if size <= 0 or size > settings.MATERIAL_MAX_MB * 1024 * 1024:
+        return JsonResponse({'error': f'Choose a file between 1 byte and {settings.MATERIAL_MAX_MB} MB.'}, status=400)
+    try:
+        services.validate_upload(type('UploadMetadata', (), {'name': filename, 'size': size})())
+    except MarketError as exc:
+        return JsonResponse({'error': str(exc)}, status=400)
+
+    form = ResourceMetadataForm(request.POST, teacher=request.user)
+    if not form.is_valid():
+        return JsonResponse({'errors': form.errors.get_json_data()}, status=400)
+    pending = PendingObjectUpload.objects.filter(
+        owner=request.user, purpose=PendingObjectUpload.Purpose.RESOURCE,
+        expires_at__gt=timezone.now(),
+    )
+    if pending.count() >= 5:
+        return JsonResponse({'error': 'Finish or wait for an existing upload to expire before starting another.'}, status=429)
+
+    extension = os.path.splitext(filename)[1].lower()
+    content_type = mimetypes.guess_type(filename)[0] or 'application/octet-stream'
+    metadata = {
+        'title': form.cleaned_data['title'],
+        'description': form.cleaned_data['description'],
+        'visibility': form.cleaned_data['visibility'],
+        'price': str(form.cleaned_data['price']) if form.cleaned_data['price'] is not None else '',
+        'classrooms': [str(classroom.pk) for classroom in form.cleaned_data['classrooms']],
+    }
+    upload = PendingObjectUpload.objects.create(
+        owner=request.user,
+        purpose=PendingObjectUpload.Purpose.RESOURCE,
+        object_key=f'upload-staging/resources/{uuid.uuid4().hex}{extension}',
+        final_key=f'teacher-resources/{uuid.uuid4().hex}{extension}',
+        original_name=filename,
+        content_type=content_type,
+        size=size,
+        metadata=metadata,
+    )
+    try:
+        response = issue_upload_url(upload)
+    except Exception:
+        upload.delete()
+        return JsonResponse({'error': 'Could not prepare secure storage upload. Try again later.'}, status=503)
+    return JsonResponse(response)
+
+
+@verified_teacher_required
+@require_POST
+def resource_upload_finish(request):
+    if not settings.USE_OBJECT_STORAGE:
+        return JsonResponse({'error': 'Persistent object storage is not configured.'}, status=503)
+    try:
+        upload_id = uuid.UUID(request.POST.get('upload_id', ''))
+    except (TypeError, ValueError, AttributeError):
+        return JsonResponse({'error': 'Invalid upload authorization.'}, status=400)
+    upload = PendingObjectUpload.objects.filter(
+        pk=upload_id, owner=request.user, purpose=PendingObjectUpload.Purpose.RESOURCE,
+        resource__isnull=True,
+    ).first()
+    if upload is None:
+        return JsonResponse({'error': 'Upload authorization was not found or has already been used.'}, status=404)
+    try:
+        verify_uploaded_object(upload)
+        snapshot_uploaded_object(upload)
+        validate_resource_content(upload)
+    except ValueError as exc:
+        storage_cleanup_succeeded = False
+        try:
+            from .uploads import delete_uploaded_object
+            delete_uploaded_object(upload)
+            storage_cleanup_succeeded = True
+        except Exception:
+            # Keep the expired authorization row; the cleanup command retries both keys.
+            pass
+        if storage_cleanup_succeeded:
+            upload.delete()
+        return JsonResponse({'error': str(exc)}, status=400)
+    except ClientError as exc:
+        code = str(exc.response.get('Error', {}).get('Code', ''))
+        if code in {'404', 'NoSuchKey', 'NotFound'}:
+            return JsonResponse({'error': 'Upload is not available yet. Wait for it to finish and try again.'}, status=409)
+        return JsonResponse({'error': 'The uploaded object could not be verified. Try again later.'}, status=503)
+    except Exception:
+        return JsonResponse({'error': 'The uploaded object could not be verified. Try again later.'}, status=503)
+
+    form = ResourceMetadataForm(upload.metadata, teacher=request.user)
+    if not form.is_valid():
+        return JsonResponse({'error': 'Resource details are no longer valid; start a new upload.',
+                             'errors': form.errors.get_json_data()}, status=400)
+    try:
+        with transaction.atomic():
+            upload = PendingObjectUpload.objects.select_for_update().get(
+                pk=upload.pk, owner=request.user,
+                purpose=PendingObjectUpload.Purpose.RESOURCE,
+                expires_at__gt=timezone.now(),
+            )
+            resource = form.save(commit=False)
+            resource.teacher = request.user
+            resource.file.name = upload.scan_key
+            resource.original_name = upload.original_name
+            resource.scan_status = Resource.ScanStatus.PENDING
+            resource.save()
+            form.save_m2m()
+            upload.resource = resource
+            upload.save(update_fields=['resource'])
+    except PendingObjectUpload.DoesNotExist:
+        return JsonResponse({'error': 'Upload authorization expired or was already used.'}, status=404)
+    return JsonResponse({
+        'ok': True,
+        'resource_id': resource.pk,
+        'scan_status': Resource.ScanStatus.PENDING,
+        'message': 'Upload received. The file will be available after the security scan passes.',
+    }, status=202)
 
 
 @verified_teacher_required
 @require_POST
 def resource_delete(request, resource_id):
     r = get_object_or_404(Resource, pk=resource_id, teacher=request.user)
-    r.file.delete(save=False)
-    r.delete()
+    try:
+        with transaction.atomic():
+            r = Resource.objects.select_for_update().get(pk=r.pk, teacher=request.user)
+            r.file.delete(save=False)
+            r.delete()
+    except Exception:
+        messages.error(request, 'The resource could not be deleted from private storage. Please retry.')
+        return redirect('market:teacher_resources')
     messages.info(request, 'Resource deleted.')
     return redirect('market:teacher_resources')
 
@@ -73,6 +222,26 @@ def resource_download(request, resource_id):
     r = get_object_or_404(Resource, pk=resource_id)
     if not services.can_access_resource(request.user, r):
         raise Http404            # 404, not 403: don't reveal that a private file exists
+    if settings.USE_OBJECT_STORAGE:
+        from urllib.parse import quote
+
+        client = object_storage_client()
+        safe_filename = (r.original_name or 'download').replace('\\', '_').replace('/', '_').replace('"', '_').replace('\r', '').replace('\n', '')
+        download_url = client.generate_presigned_url(
+            'get_object',
+            Params={
+                'Bucket': settings.OBJECT_STORAGE_BUCKET,
+                'Key': r.file.storage._normalize_name(r.file.name),
+                'ResponseContentDisposition': f"attachment; filename*=UTF-8''{quote(safe_filename)}",
+                'ResponseContentType': 'application/octet-stream',
+            },
+            ExpiresIn=300,
+            HttpMethod='GET',
+        )
+        response = redirect(download_url)
+        response['Cache-Control'] = 'private, no-store'
+        response['Referrer-Policy'] = 'no-referrer'
+        return response
     resp = FileResponse(r.file.open('rb'), as_attachment=True, filename=r.original_name or 'download')
     resp['X-Content-Type-Options'] = 'nosniff'
     resp['Cache-Control'] = 'private, no-store'
@@ -83,7 +252,10 @@ def resource_download(request, resource_id):
 @require_POST
 def resource_buy(request, resource_id):
     _student(request)
-    r = get_object_or_404(Resource, pk=resource_id, visibility=Resource.Visibility.PAID)
+    r = get_object_or_404(
+        Resource, pk=resource_id, visibility=Resource.Visibility.PAID,
+        scan_status=Resource.ScanStatus.CLEAN,
+    )
     try:
         p = services.request_purchase(request.user, r)
         messages.info(request, f'Purchase request recorded (reference {p.reference}). Access unlocks only after the '

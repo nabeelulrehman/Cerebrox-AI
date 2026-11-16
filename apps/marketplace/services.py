@@ -490,6 +490,8 @@ def can_access_resource(user, resource) -> bool:
     """Single authorization point for every download. Server-side only."""
     if not user.is_authenticated:
         return False
+    if resource.scan_status != Resource.ScanStatus.CLEAN:
+        return False
     if resource.teacher_id == user.id:
         return True
     if not user.is_student:

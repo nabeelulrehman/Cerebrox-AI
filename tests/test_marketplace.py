@@ -1,6 +1,7 @@
 import base64
 import hashlib
-from unittest.mock import AsyncMock, patch
+from io import BytesIO
+from unittest.mock import AsyncMock, MagicMock, patch
 import shutil
 import tempfile
 from datetime import timedelta
@@ -9,6 +10,7 @@ from decimal import Decimal
 from django.core.files.storage import FileSystemStorage
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core import mail
+from django.core.management import call_command
 from django.db import IntegrityError, transaction
 from django.test import TestCase, Client, override_settings
 from django.utils import timezone
@@ -17,9 +19,11 @@ from livekit.protocol.webhook import WebhookEvent
 
 from apps.classrooms.models import Enrollment
 from apps.marketplace import services
+from apps.marketplace import uploads as object_uploads
+from apps.marketplace import scanning as resource_scanning
 from apps.marketplace.models import (
     GuidanceMessage, GuidanceRequest, Resource, Payment, TeachingSession, SessionBooking,
-    SessionAttendance, Review,
+    SessionAttendance, Review, PendingObjectUpload, OrphanedAvatar,
 )
 from apps.teachers.models import TeacherProfile
 from tests.test_teacher_ecosystem import make_student, make_teacher, make_class, enroll, login, User, PW
@@ -105,6 +109,492 @@ class MaterialAccessTests(MarketBase):
         r = login(self.student).post('/market/teach/resources/', {
             'title': 'x', 'visibility': 'public', 'file': SimpleUploadedFile('a.pdf', b'x')})
         self.assertEqual(r.status_code, 403)
+
+
+class DirectResourceUploadTests(MarketBase):
+    def test_start_authorizes_teacher_and_signs_a_100_mb_direct_upload(self):
+        with override_settings(USE_OBJECT_STORAGE=True, MATERIAL_MAX_MB=100), \
+                patch('apps.marketplace.views.issue_upload_url', return_value={
+                    'upload_id': 'signed-upload', 'url': 'https://storage.example/upload',
+                    'method': 'PUT', 'headers': {}, 'expires_in': 600,
+                }) as issue_url:
+            response = login(self.teacher).post('/market/teach/resources/upload/start/', {
+                'title': 'Class notes', 'description': 'Physics', 'visibility': 'public',
+                'file_name': '../../lesson.pdf', 'file_size': str(100 * 1024 * 1024),
+            })
+            self.assertEqual(response.status_code, 200)
+            upload = PendingObjectUpload.objects.get(owner=self.teacher)
+            self.assertEqual(upload.purpose, PendingObjectUpload.Purpose.RESOURCE)
+            self.assertEqual(upload.original_name, 'lesson.pdf')
+            self.assertEqual(upload.size, 100 * 1024 * 1024)
+            self.assertTrue(upload.object_key.startswith('upload-staging/resources/'))
+            self.assertTrue(upload.final_key.startswith('teacher-resources/'))
+            issue_url.assert_called_once_with(upload)
+
+    def test_start_rejects_student_oversize_and_unsupported_files(self):
+        with override_settings(USE_OBJECT_STORAGE=True, MATERIAL_MAX_MB=100):
+            student_response = login(self.student).post('/market/teach/resources/upload/start/', {
+                'file_name': 'lesson.pdf', 'file_size': '1',
+            })
+            self.assertEqual(student_response.status_code, 403)
+            client = login(self.teacher)
+            for filename, size in (
+                ('lesson.pdf', 100 * 1024 * 1024 + 1),
+                ('payload.html', 100),
+                ('empty.pdf', 0),
+            ):
+                response = client.post('/market/teach/resources/upload/start/', {
+                    'title': 'Class notes', 'visibility': 'public',
+                    'file_name': filename, 'file_size': str(size),
+                })
+                self.assertEqual(response.status_code, 400)
+            self.assertFalse(PendingObjectUpload.objects.exists())
+
+    def test_finish_creates_a_private_pending_resource_for_background_scanning(self):
+        upload = PendingObjectUpload.objects.create(
+            owner=self.teacher,
+            purpose=PendingObjectUpload.Purpose.RESOURCE,
+            object_key='upload-staging/resources/random.pdf', final_key='teacher-resources/random.pdf',
+            original_name='lesson.pdf', content_type='application/pdf', size=20,
+            metadata={'title': 'Server title', 'description': 'd', 'visibility': 'public',
+                      'price': '', 'classrooms': []},
+        )
+        with override_settings(USE_OBJECT_STORAGE=True), \
+                patch('apps.marketplace.views.verify_uploaded_object') as verify, \
+                patch('apps.marketplace.views.snapshot_uploaded_object', side_effect=lambda item: (setattr(item, 'scan_key', 'upload-snapshots/resources/snapshot.pdf'), item.save(update_fields=['scan_key']))) as snapshot, \
+                patch('apps.marketplace.views.validate_resource_content') as validate_content:
+            response = login(self.teacher).post('/market/teach/resources/upload/finish/', {
+                'upload_id': str(upload.pk),
+            })
+        self.assertEqual(response.status_code, 202)
+        resource = Resource.objects.get()
+        self.assertEqual(resource.title, 'Server title')
+        self.assertEqual(resource.file.name, 'upload-snapshots/resources/snapshot.pdf')
+        self.assertEqual(resource.original_name, 'lesson.pdf')
+        self.assertEqual(resource.scan_status, Resource.ScanStatus.PENDING)
+        verify.assert_called_once()
+        snapshot.assert_called_once()
+        validate_content.assert_called_once()
+        self.assertEqual(verify.call_args.args[0].object_key, upload.object_key)
+        upload.refresh_from_db()
+        self.assertEqual(upload.resource_id, resource.pk)
+        self.assertEqual(upload.scan_key, resource.file.name)
+
+    def test_pending_resource_is_hidden_from_students_and_downloads(self):
+        resource = Resource.objects.create(
+            teacher=self.teacher, title='Awaiting scan', file='upload-staging/resources/wait.pdf',
+            original_name='wait.pdf', visibility=Resource.Visibility.PUBLIC,
+            scan_status=Resource.ScanStatus.PENDING,
+        )
+        page = login(self.student).get('/market/resources/')
+        self.assertNotContains(page, 'Awaiting scan')
+        response = login(self.student).get(f'/market/resources/{resource.pk}/download/')
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(services.can_access_resource(self.teacher, resource))
+
+    def test_finish_cannot_use_another_teachers_upload(self):
+        upload = PendingObjectUpload.objects.create(
+            owner=make_teacher('other-upload-owner'),
+            purpose=PendingObjectUpload.Purpose.RESOURCE,
+            object_key='upload-staging/resources/other.pdf', final_key='teacher-resources/other.pdf',
+            original_name='other.pdf',
+            content_type='application/pdf', size=5,
+            metadata={'title': 'Other', 'description': '', 'visibility': 'public', 'price': '', 'classrooms': []},
+        )
+        with override_settings(USE_OBJECT_STORAGE=True), \
+                patch('apps.marketplace.views.verify_uploaded_object') as verify:
+            response = login(self.teacher).post('/market/teach/resources/upload/finish/', {
+                'upload_id': str(upload.pk),
+            })
+        self.assertEqual(response.status_code, 404)
+        verify.assert_not_called()
+
+    def test_invalid_object_cleanup_failure_keeps_retryable_upload_record(self):
+        upload = PendingObjectUpload.objects.create(
+            owner=self.teacher, purpose=PendingObjectUpload.Purpose.RESOURCE,
+            object_key='upload-staging/resources/invalid.pdf', final_key='teacher-resources/invalid.pdf',
+            original_name='invalid.pdf', content_type='application/pdf', size=10,
+        )
+        with override_settings(USE_OBJECT_STORAGE=True), \
+                patch('apps.marketplace.views.verify_uploaded_object', side_effect=ValueError('malformed')), \
+                patch('apps.marketplace.uploads.delete_uploaded_object', side_effect=OSError('provider down')):
+            response = login(self.teacher).post('/market/teach/resources/upload/finish/', {
+                'upload_id': str(upload.pk),
+            })
+        self.assertEqual(response.status_code, 400)
+        self.assertTrue(PendingObjectUpload.objects.filter(pk=upload.pk).exists())
+
+    @override_settings(USE_OBJECT_STORAGE=True, OBJECT_STORAGE_BUCKET='private-assets')
+    def test_resource_content_validation_rejects_mime_mismatch_and_malformed_pdf(self):
+        upload = PendingObjectUpload.objects.create(
+            owner=self.teacher, purpose=PendingObjectUpload.Purpose.RESOURCE,
+            object_key='upload-staging/resources/mismatch.pdf', final_key='teacher-resources/mismatch.pdf',
+            original_name='lesson.pdf', content_type='text/plain', size=12,
+        )
+        with patch.object(object_uploads, 'object_storage_client') as client:
+            with patch.object(object_uploads, 'storage_for_purpose') as storage_for:
+                storage_for.return_value._normalize_name.return_value = upload.object_key
+                with self.assertRaisesRegex(ValueError, 'extension and declared'):
+                    object_uploads.validate_resource_content(upload)
+                client.assert_not_called()
+
+            upload.content_type = 'application/pdf'
+            body = MagicMock()
+            body.read.return_value = b'<html>bad</html>'
+            client.return_value.get_object.return_value = {'Body': body}
+            with patch.object(object_uploads, 'storage_for_purpose') as storage_for:
+                storage_for.return_value._normalize_name.return_value = upload.object_key
+                with self.assertRaisesRegex(ValueError, 'does not match'):
+                    object_uploads.validate_resource_content(upload)
+            self.assertEqual(client.return_value.get_object.call_count, 2)
+
+    @override_settings(USE_OBJECT_STORAGE=True, OBJECT_STORAGE_BUCKET='private-assets')
+    def test_resource_content_validation_accepts_pdf_signature_and_trailer(self):
+        upload = PendingObjectUpload.objects.create(
+            owner=self.teacher, purpose=PendingObjectUpload.Purpose.RESOURCE,
+            object_key='upload-staging/resources/valid.pdf', final_key='teacher-resources/valid.pdf',
+            original_name='lesson.pdf', content_type='application/pdf', size=19,
+        )
+        first = MagicMock()
+        first.read.return_value = b'%PDF-1.7\ncontent'
+        tail = MagicMock()
+        tail.read.return_value = b'content\n%%EOF'
+        client = MagicMock()
+        client.get_object.side_effect = [{'Body': first}, {'Body': tail}]
+        with patch.object(object_uploads, 'object_storage_client', return_value=client), \
+                patch.object(object_uploads, 'storage_for_purpose') as storage_for:
+            storage_for.return_value._normalize_name.return_value = upload.object_key
+            self.assertTrue(object_uploads.validate_resource_content(upload))
+        self.assertEqual(client.get_object.call_count, 2)
+
+    def test_object_storage_download_redirects_to_short_lived_private_url_after_access_check(self):
+        resource = self.upload('public')
+        storage = MagicMock()
+        storage._normalize_name.return_value = 'private/teacher-resources/random.pdf'
+        client = MagicMock()
+        client.generate_presigned_url.return_value = 'https://storage.example/private-signed-get'
+        with override_settings(USE_OBJECT_STORAGE=True), \
+                patch.object(Resource._meta.get_field('file'), 'storage', storage), \
+                patch('apps.marketplace.views.object_storage_client', return_value=client):
+            response = login(self.student).get(f'/market/resources/{resource.pk}/download/')
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response['Location'], 'https://storage.example/private-signed-get')
+        self.assertEqual(response['Cache-Control'], 'private, no-store')
+        self.assertEqual(response['Referrer-Policy'], 'no-referrer')
+        call = client.generate_presigned_url.call_args
+        self.assertEqual(call.args[0], 'get_object')
+        self.assertEqual(call.kwargs['ExpiresIn'], 300)
+        self.assertEqual(call.kwargs['Params']['Key'], 'private/teacher-resources/random.pdf')
+
+    def test_object_storage_deletion_calls_private_storage_delete(self):
+        resource = self.upload('draft')
+        object_name = resource.file.name
+        storage = MagicMock()
+        with override_settings(USE_OBJECT_STORAGE=True), \
+                patch.object(Resource._meta.get_field('file'), 'storage', storage):
+            response = login(self.teacher).post(f'/market/teach/resources/{resource.pk}/delete/')
+        self.assertEqual(response.status_code, 302)
+        storage.delete.assert_called_once_with(object_name)
+        self.assertFalse(Resource.objects.filter(pk=resource.pk).exists())
+
+
+class ResourceScanningTests(MarketBase):
+    def create_pending_resource(self, username='scan-owner'):
+        owner = self.teacher if username == 'scan-owner' else make_teacher(username)
+        upload = PendingObjectUpload.objects.create(
+            owner=owner, purpose=PendingObjectUpload.Purpose.RESOURCE,
+            object_key='upload-staging/resources/to-scan.pdf',
+            scan_key='upload-snapshots/resources/to-scan.pdf',
+            final_key='teacher-resources/scanned.pdf', original_name='lesson.pdf',
+            content_type='application/pdf', size=123,
+        )
+        resource = Resource.objects.create(
+            teacher=owner, title='Private until scanned', file=upload.scan_key,
+            original_name=upload.original_name, visibility=Resource.Visibility.PUBLIC,
+            scan_status=Resource.ScanStatus.PENDING,
+        )
+        upload.resource = resource
+        upload.save(update_fields=['resource'])
+        return resource, upload
+
+    def test_clean_verdict_is_the_only_path_that_promotes_and_grants_access(self):
+        resource, upload = self.create_pending_resource()
+        with patch('apps.marketplace.scanning.clamav_scan_object', return_value=True) as scan, \
+                patch('apps.marketplace.scanning.promote_uploaded_object', return_value=upload.final_key) as promote:
+            result = resource_scanning.scan_resource(resource.pk)
+
+        self.assertEqual(result, 'clean')
+        resource.refresh_from_db()
+        self.assertEqual(resource.scan_status, Resource.ScanStatus.CLEAN)
+        self.assertEqual(resource.file.name, upload.final_key)
+        scan.assert_called_once_with(upload.scan_key, expected_size=upload.size)
+        promote.assert_called_once()
+        self.assertTrue(services.can_access_resource(self.student, resource))
+
+    def test_infected_verdict_quarantines_and_never_promotes(self):
+        resource, upload = self.create_pending_resource()
+        with patch('apps.marketplace.scanning.clamav_scan_object', side_effect=object_uploads.MalwareDetected()), \
+                patch('apps.marketplace.scanning.quarantine_resource_object', return_value='quarantine/resources/bad.pdf'), \
+                patch('apps.marketplace.scanning.promote_uploaded_object') as promote:
+            result = resource_scanning.scan_resource(resource.pk)
+
+        self.assertEqual(result, 'infected')
+        resource.refresh_from_db()
+        self.assertEqual(resource.scan_status, Resource.ScanStatus.INFECTED)
+        self.assertEqual(resource.file.name, 'quarantine/resources/bad.pdf')
+        self.assertFalse(services.can_access_resource(self.student, resource))
+        promote.assert_not_called()
+
+    def test_timeout_unavailable_or_invalid_scanner_verdict_fails_closed(self):
+        resource, _ = self.create_pending_resource()
+        with patch('apps.marketplace.scanning.clamav_scan_object', side_effect=object_uploads.ScannerUnavailable()):
+            result = resource_scanning.scan_resource(resource.pk)
+        self.assertEqual(result, 'failed')
+        resource.refresh_from_db()
+        self.assertEqual(resource.scan_status, Resource.ScanStatus.FAILED)
+        self.assertFalse(services.can_access_resource(self.student, resource))
+
+        resource.scan_status = Resource.ScanStatus.PENDING
+        resource.save(update_fields=['scan_status'])
+        with patch('apps.marketplace.scanning.clamav_scan_object', return_value=False):
+            result = resource_scanning.scan_resource(resource.pk)
+        self.assertEqual(result, 'failed')
+        resource.refresh_from_db()
+        self.assertEqual(resource.scan_status, Resource.ScanStatus.FAILED)
+
+    def test_teacher_cannot_manage_another_teachers_resource(self):
+        resource, _ = self.create_pending_resource('scan-other-owner')
+        response = login(self.teacher).post(f'/market/teach/resources/{resource.pk}/delete/')
+        self.assertEqual(response.status_code, 404)
+        self.assertTrue(Resource.objects.filter(pk=resource.pk).exists())
+
+
+class OrphanedAvatarCleanupTests(TestCase):
+    def test_expired_pending_scan_is_retained_for_worker(self):
+        owner = make_teacher('cleanup-pending-scan')
+        upload = PendingObjectUpload.objects.create(
+            owner=owner, purpose=PendingObjectUpload.Purpose.RESOURCE,
+            object_key='upload-staging/resources/pending.pdf', final_key='teacher-resources/pending.pdf',
+            original_name='pending.pdf', content_type='application/pdf', size=20,
+            expires_at=timezone.now() - timedelta(minutes=1),
+        )
+        resource = Resource.objects.create(
+            teacher=owner, title='Pending', file=upload.object_key,
+            scan_status=Resource.ScanStatus.PENDING,
+        )
+        upload.resource = resource
+        upload.save(update_fields=['resource'])
+        with patch('apps.marketplace.management.commands.purge_pending_uploads.delete_uploaded_object') as delete_all, \
+                patch('apps.marketplace.management.commands.purge_pending_uploads.delete_staged_upload') as delete_staging:
+            call_command('purge_pending_uploads')
+        delete_all.assert_not_called()
+        delete_staging.assert_not_called()
+        self.assertTrue(PendingObjectUpload.objects.filter(pk=upload.pk).exists())
+
+    def test_clean_resource_cleanup_deletes_only_unreferenced_staging_key(self):
+        owner = make_teacher('cleanup-clean-scan')
+        upload = PendingObjectUpload.objects.create(
+            owner=owner, purpose=PendingObjectUpload.Purpose.RESOURCE,
+            object_key='upload-staging/resources/clean.pdf', final_key='teacher-resources/clean.pdf',
+            original_name='clean.pdf', content_type='application/pdf', size=20,
+            expires_at=timezone.now() - timedelta(minutes=1),
+        )
+        resource = Resource.objects.create(
+            teacher=owner, title='Clean', file=upload.final_key,
+            scan_status=Resource.ScanStatus.CLEAN,
+        )
+        upload.resource = resource
+        upload.save(update_fields=['resource'])
+        with patch('apps.marketplace.management.commands.purge_pending_uploads.delete_staged_upload') as delete_staging, \
+                patch('apps.marketplace.management.commands.purge_pending_uploads.delete_uploaded_object') as delete_all:
+            call_command('purge_pending_uploads')
+        delete_staging.assert_called_once()
+        delete_all.assert_not_called()
+        resource.refresh_from_db()
+        self.assertEqual(resource.file.name, upload.final_key)
+        self.assertFalse(PendingObjectUpload.objects.filter(pk=upload.pk).exists())
+
+    def test_cleanup_preserves_referenced_files_and_retries_failed_deletion(self):
+        user = make_student('avatar-cleanup')
+        orphan = OrphanedAvatar.objects.create(storage_key='profiles/old-avatar.jpg')
+        user.avatar.name = orphan.storage_key
+        user.save(update_fields=['avatar'])
+        with patch('apps.marketplace.management.commands.purge_pending_uploads.default_storage.delete') as delete:
+            call_command('purge_pending_uploads')
+            delete.assert_not_called()
+            self.assertFalse(OrphanedAvatar.objects.filter(pk=orphan.pk).exists())
+
+            orphan = OrphanedAvatar.objects.create(storage_key='profiles/another-old-avatar.jpg')
+            delete.side_effect = [OSError('temporary provider failure'), None]
+            call_command('purge_pending_uploads')
+            self.assertTrue(OrphanedAvatar.objects.filter(pk=orphan.pk).exists())
+            call_command('purge_pending_uploads')
+            self.assertFalse(OrphanedAvatar.objects.filter(pk=orphan.pk).exists())
+
+
+class PresignedObjectStorageTests(TestCase):
+    def setUp(self):
+        self.owner = make_teacher('presign-owner')
+        self.upload = PendingObjectUpload.objects.create(
+            owner=self.owner,
+            purpose=PendingObjectUpload.Purpose.RESOURCE,
+            object_key='upload-staging/resources/file.pdf', final_key='teacher-resources/file.pdf',
+            original_name='file.pdf',
+            content_type='application/pdf', size=123,
+            metadata={'title': 'File', 'visibility': 'public'},
+        )
+
+    @override_settings(USE_OBJECT_STORAGE=True, OBJECT_STORAGE_BUCKET='private-assets')
+    def test_presign_binds_method_content_length_type_owner_and_upload_id(self):
+        storage = MagicMock()
+        storage._normalize_name.return_value = 'private/upload-staging/resources/file.pdf'
+        client = MagicMock()
+        client.generate_presigned_url.return_value = 'https://storage.example/signed'
+        with patch.object(object_uploads, 'storage_for_purpose', return_value=storage), \
+                patch.object(object_uploads, 'object_storage_client', return_value=client):
+            result = object_uploads.issue_upload_url(self.upload)
+
+        self.assertEqual(result['method'], 'PUT')
+        self.assertEqual(result['url'], 'https://storage.example/signed')
+        self.assertEqual(result['headers']['Content-Type'], 'application/pdf')
+        self.assertEqual(result['headers']['x-amz-meta-owner-id'], str(self.owner.pk))
+        call = client.generate_presigned_url.call_args
+        self.assertEqual(call.args[0], 'put_object')
+        params = call.kwargs
+        self.assertEqual(params['Params']['ContentLength'], 123)
+        self.assertEqual(params['Params']['Metadata']['upload-id'], str(self.upload.pk))
+        self.assertEqual(params['ExpiresIn'], 600)
+
+    @override_settings(USE_OBJECT_STORAGE=True, OBJECT_STORAGE_BUCKET='private-assets')
+    def test_head_verification_rejects_wrong_size_and_wrong_owner_metadata(self):
+        storage = MagicMock()
+        storage._normalize_name.return_value = 'private/upload-staging/resources/file.pdf'
+        client = MagicMock()
+        client.head_object.return_value = {
+            'Metadata': {'upload-id': str(self.upload.pk), 'owner-id': str(self.owner.pk)},
+            'ContentLength': self.upload.size,
+            'ContentType': self.upload.content_type,
+        }
+        with patch.object(object_uploads, 'storage_for_purpose', return_value=storage), \
+                patch.object(object_uploads, 'object_storage_client', return_value=client):
+            object_uploads.verify_uploaded_object(self.upload)
+            client.head_object.return_value['ContentLength'] += 1
+            with self.assertRaisesRegex(ValueError, 'size'):
+                object_uploads.verify_uploaded_object(self.upload)
+            client.head_object.return_value['ContentLength'] = self.upload.size
+            client.head_object.return_value['Metadata']['owner-id'] = 'another-owner'
+            with self.assertRaisesRegex(ValueError, 'authorization'):
+                object_uploads.verify_uploaded_object(self.upload)
+
+    @override_settings(USE_OBJECT_STORAGE=True, OBJECT_STORAGE_BUCKET='private-assets')
+    def test_scan_snapshot_is_server_only_and_verified_before_it_is_used(self):
+        storage = MagicMock()
+        storage._normalize_name.side_effect = lambda name: f'private/{name}'
+        client = MagicMock()
+        client.head_object.return_value = {
+            'Metadata': {'upload-id': str(self.upload.pk), 'owner-id': str(self.owner.pk)},
+            'ContentLength': self.upload.size,
+            'ContentType': self.upload.content_type,
+        }
+        with patch.object(object_uploads, 'storage_for_purpose', return_value=storage), \
+                patch.object(object_uploads, 'object_storage_client', return_value=client):
+            key = object_uploads.snapshot_uploaded_object(self.upload)
+
+        self.assertEqual(key, self.upload.scan_key)
+        self.assertTrue(key.startswith('upload-snapshots/resources/'))
+        copy = client.copy_object.call_args.kwargs
+        self.assertEqual(copy['CopySource']['Key'], 'private/upload-staging/resources/file.pdf')
+        self.assertEqual(copy['Key'], f'private/{key}')
+        client.head_object.assert_called_once_with(Bucket='private-assets', Key=f'private/{key}')
+        self.assertEqual(object_uploads.object_key_for_scan(self.upload), key)
+
+    @override_settings(USE_OBJECT_STORAGE=True, OBJECT_STORAGE_BUCKET='private-assets')
+    def test_expired_upload_cannot_be_finalized(self):
+        self.upload.expires_at = timezone.now() - timedelta(seconds=1)
+        self.upload.save(update_fields=['expires_at'])
+        with patch.object(object_uploads, 'object_storage_client') as client:
+            with self.assertRaisesRegex(ValueError, 'expired'):
+                object_uploads.verify_uploaded_object(self.upload)
+        client.assert_not_called()
+
+    @override_settings(USE_OBJECT_STORAGE=True, OBJECT_STORAGE_BUCKET='private-assets')
+    def test_promote_copies_to_private_final_key_and_staging_cleanup_is_separate(self):
+        self.upload.scan_key = 'upload-snapshots/resources/file.pdf'
+        storage = MagicMock()
+        storage._normalize_name.side_effect = lambda name: f'private/{name}'
+        client = MagicMock()
+        with patch.object(object_uploads, 'storage_for_purpose', return_value=storage), \
+                patch.object(object_uploads, 'object_storage_client', return_value=client):
+            final_key = object_uploads.promote_uploaded_object(self.upload)
+            client.copy_object.assert_called_once_with(
+                Bucket='private-assets',
+                Key='private/teacher-resources/file.pdf',
+                CopySource={
+                    'Bucket': 'private-assets',
+                    'Key': 'private/upload-snapshots/resources/file.pdf',
+                },
+                MetadataDirective='REPLACE',
+                Metadata={'upload-id': str(self.upload.pk), 'owner-id': str(self.owner.pk)},
+                ContentType='application/pdf',
+            )
+            client.delete_object.assert_not_called()
+            self.assertEqual(final_key, self.upload.final_key)
+
+            object_uploads.delete_staged_upload(self.upload)
+
+        self.assertEqual(client.delete_object.call_count, 2)
+        self.assertEqual(
+            {call.kwargs['Key'] for call in client.delete_object.call_args_list},
+            {'private/upload-staging/resources/file.pdf', 'private/upload-snapshots/resources/file.pdf'},
+        )
+
+    @override_settings(
+        USE_OBJECT_STORAGE=True, OBJECT_STORAGE_BUCKET='private-assets',
+        CLAMAV_HOST='clamav.private', CLAMAV_PORT=3310,
+        CLAMAV_TIMEOUT_SECONDS=5, MATERIAL_MAX_MB=100,
+    )
+    def test_clamav_instream_protocol_requires_an_explicit_clean_verdict(self):
+        storage = MagicMock()
+        storage._normalize_name.return_value = 'private/upload-staging/resources/file.pdf'
+        client = MagicMock()
+        body = BytesIO(b'private file bytes')
+        client.get_object.return_value = {'Body': body}
+        scanner = MagicMock()
+        scanner.__enter__.return_value = scanner
+        scanner.recv.return_value = b'stream: OK\x00'
+        with patch.object(object_uploads.Resource._meta.get_field('file'), 'storage', storage), \
+                patch.object(object_uploads, 'object_storage_client', return_value=client), \
+                patch.object(object_uploads.socket, 'create_connection', return_value=scanner) as connect:
+            self.assertTrue(object_uploads.clamav_scan_object(self.upload.object_key, expected_size=18))
+        connect.assert_called_once_with(('clamav.private', 3310), timeout=5)
+        sent = [call.args[0] for call in scanner.sendall.call_args_list]
+        self.assertEqual(sent[0], b'zINSTREAM\x00')
+        self.assertIn(b'private file bytes', sent[1])
+        self.assertEqual(sent[-1], b'\x00\x00\x00\x00')
+
+    @override_settings(
+        USE_OBJECT_STORAGE=True, OBJECT_STORAGE_BUCKET='private-assets',
+        CLAMAV_HOST='clamav.private', CLAMAV_PORT=3310,
+        CLAMAV_TIMEOUT_SECONDS=5, MATERIAL_MAX_MB=100,
+    )
+    def test_clamav_infected_invalid_and_size_mismatch_verdicts_never_pass(self):
+        storage = MagicMock()
+        storage._normalize_name.return_value = 'private/upload-staging/resources/file.pdf'
+        client = MagicMock()
+        client.get_object.return_value = {'Body': BytesIO(b'file bytes')}
+        scanner = MagicMock()
+        scanner.__enter__.return_value = scanner
+        with patch.object(object_uploads.Resource._meta.get_field('file'), 'storage', storage), \
+                patch.object(object_uploads, 'object_storage_client', return_value=client), \
+                patch.object(object_uploads.socket, 'create_connection', return_value=scanner):
+            scanner.recv.return_value = b'stream: Eicar-Test FOUND\x00'
+            with self.assertRaises(object_uploads.MalwareDetected):
+                object_uploads.clamav_scan_object(self.upload.object_key, expected_size=10)
+            scanner.recv.return_value = b'stream: scanner error ERROR\x00'
+            with self.assertRaises(object_uploads.ScannerUnavailable):
+                object_uploads.clamav_scan_object(self.upload.object_key, expected_size=10)
+            with self.assertRaises(object_uploads.ScannerUnavailable):
+                object_uploads.clamav_scan_object(self.upload.object_key, expected_size=10)
 
 
 class GuidanceConversationTests(MarketBase):

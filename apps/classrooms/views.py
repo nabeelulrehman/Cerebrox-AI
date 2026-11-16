@@ -212,5 +212,7 @@ def student_class(request, class_id):
         'c': c, 'enr': enr,
         'announcements': c.announcements.all()[:20],
         'class_quizzes': c.class_quizzes.filter(status='published').order_by('-created_at'),
-        'resources': c.resources.filter(visibility='classes'),
+        'resources': c.resources.filter(
+            visibility='classes', scan_status='clean',
+        ),
     })

@@ -6,8 +6,10 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, Client
 from django.test.utils import override_settings
 from django.contrib.auth import get_user_model
+from unittest.mock import patch
 
 from apps.teachers.models import TeacherProfile
+from apps.marketplace.models import PendingObjectUpload
 
 User = get_user_model()
 TEACHER_PASSWORD = 'StrongPass123'
@@ -42,6 +44,54 @@ class AuthenticationTests(TestCase):
         self.assertIn('Crop &amp; Save', html)
         self.assertIn('cropperjs@1.6.2', html)
         self.assertIn('/static/js/profile_avatar_crop.js?v=4', html)
+
+    @override_settings(USE_OBJECT_STORAGE=True, AVATAR_UPLOAD_MAX_BYTES=5 * 1024 * 1024)
+    def test_profile_avatar_uses_direct_upload_and_attaches_only_owner_verified_object(self):
+        student = User.objects.create_user(
+            'direct-avatar', 'direct-avatar@example.com', TEACHER_PASSWORD,
+        )
+        client = Client()
+        client.force_login(student)
+        upload = PendingObjectUpload.objects.create(
+            owner=student,
+            purpose=PendingObjectUpload.Purpose.AVATAR,
+            object_key='upload-staging/avatars/random.jpg', final_key='profiles/random.jpg',
+            original_name='portrait-cropped.jpg',
+            content_type='image/jpeg', size=512,
+        )
+        with patch('apps.marketplace.uploads.verify_avatar_image') as verify, \
+                patch('apps.marketplace.uploads.promote_uploaded_object', return_value=upload.final_key) as promote, \
+                patch('apps.marketplace.uploads.delete_staged_upload') as delete_staged:
+            response = client.post('/accounts/profile/', {
+                'first_name': 'Direct', 'last_name': 'Avatar', 'email': student.email,
+                'bio': '', 'study_level': 'undergraduate', 'study_level_custom': '',
+                'avatar_upload_id': str(upload.pk),
+            })
+        self.assertEqual(response.status_code, 302)
+        student.refresh_from_db()
+        self.assertEqual(student.avatar.name, upload.final_key)
+        self.assertFalse(PendingObjectUpload.objects.filter(pk=upload.pk).exists())
+        verify.assert_called_once()
+        promote.assert_called_once()
+        delete_staged.assert_called_once()
+        self.assertEqual(verify.call_args.args[0].object_key, upload.object_key)
+        self.assertEqual(promote.call_args.args[0].final_key, upload.final_key)
+
+    @override_settings(USE_OBJECT_STORAGE=True)
+    def test_avatar_upload_start_rejects_invalid_size_and_type(self):
+        student = User.objects.create_user(
+            'avatar-start', 'avatar-start@example.com', TEACHER_PASSWORD,
+        )
+        client = Client()
+        client.force_login(student)
+        with patch('apps.marketplace.uploads.issue_upload_url') as issue_url:
+            for name, size in (('photo.exe', 100), ('photo.jpg', 5 * 1024 * 1024 + 1)):
+                response = client.post('/accounts/uploads/avatar/start/', {
+                    'file_name': name, 'file_size': str(size),
+                })
+                self.assertEqual(response.status_code, 400)
+            self.assertFalse(PendingObjectUpload.objects.exists())
+            issue_url.assert_not_called()
 
     def test_profile_rejects_unsupported_and_oversized_avatars_without_replacing_current(self):
         with tempfile.TemporaryDirectory() as media_root:
@@ -115,11 +165,22 @@ class AuthenticationTests(TestCase):
 
                 self.assertRedirects(response, '/accounts/profile/')
                 student.refresh_from_db()
+                previous_key = student.avatar.name
                 with Image.open(student.avatar.path) as saved_avatar:
                     self.assertEqual(saved_avatar.format, 'JPEG')
                     self.assertEqual(saved_avatar.size, (512, 512))
                 updated_profile = client.get('/accounts/profile/').content.decode()
                 self.assertIn(f'src="{student.avatar.url}"', updated_profile)
+                response = client.post('/accounts/profile/', {
+                    'first_name': 'Cropped', 'last_name': 'Student', 'email': student.email,
+                    'bio': '', 'study_level': 'undergraduate', 'study_level_custom': '',
+                    'avatar': image_upload('replacement.png', 'PNG'),
+                })
+                self.assertRedirects(response, '/accounts/profile/')
+                student.refresh_from_db()
+                self.assertNotEqual(student.avatar.name, previous_key)
+                from apps.marketplace.models import OrphanedAvatar
+                self.assertTrue(OrphanedAvatar.objects.filter(storage_key=previous_key).exists())
 
     def test_shared_header_shows_profile_avatar_or_user_initials(self):
         with tempfile.TemporaryDirectory() as media_root:
@@ -144,7 +205,8 @@ class AuthenticationTests(TestCase):
                 self.assertIn('data-profile-menu-trigger', student_page)
                 self.assertIn('data-profile-form-link', student_page)
                 self.assertIn('data-profile-dialog', student_page)
-                self.assertIn('href="/accounts/logout/" class="site-profile-dropdown__logout"', student_page)
+                self.assertIn('method="post" action="/accounts/logout/" class="site-profile-dropdown__logout-form"', student_page)
+                self.assertIn('name="csrfmiddlewaretoken"', student_page)
                 self.assertIn('static/js/profile_menu.js?v=3', student_page)
 
                 teacher_with_avatar = User.objects.create_user(
@@ -165,7 +227,7 @@ class AuthenticationTests(TestCase):
                 teacher_avatar_page = avatar_teacher_client.get('/accounts/profile/').content.decode()
                 self.assertIn(f'src="{teacher_with_avatar.avatar.url}"', teacher_avatar_page)
                 self.assertIn('data-profile-menu-trigger', teacher_avatar_page)
-                self.assertIn('href="/accounts/logout/" class="site-profile-dropdown__logout"', teacher_avatar_page)
+                self.assertIn('method="post" action="/accounts/logout/" class="site-profile-dropdown__logout-form"', teacher_avatar_page)
 
                 teacher = User.objects.create_user(
                     'avatar-teacher',
@@ -212,7 +274,7 @@ class AuthenticationTests(TestCase):
         student_client.force_login(student)
         student_page = student_client.get('/accounts/profile/').content.decode()
         for item in ('AI LEARNING', 'My Courses', 'AI Notes', 'AI Quiz', 'Performance',
-                     'Recommendations', 'TEACHER ASSISTED', 'Find Teachers', 'My Classes',
+                     'Recommendations', 'Teacher-assisted learning', 'Find Teachers', 'My Classes',
                      'Teacher-Assigned Quizzes', 'Shared Study Materials',
                      'Teaching Sessions', 'My Messages'):
             self.assertIn(item, student_page)
@@ -228,7 +290,7 @@ class AuthenticationTests(TestCase):
         self.assertNotIn('student-sidebar__chevron', student_page)
         teacher_assisted_page = student_client.get('/classes/mine/').content.decode()
         self.assertIn('class="navlink active">🏫 My Classes', teacher_assisted_page)
-        self.assertIn('TEACHER ASSISTED', teacher_assisted_page)
+        self.assertIn('Teacher-assisted learning', teacher_assisted_page)
 
         teacher_client = Client()
         teacher_client.force_login(teacher)
@@ -329,7 +391,7 @@ class AuthenticationTests(TestCase):
         user = User.objects.get(username='newstudent')
         self.assertEqual(user.role, User.Role.STUDENT)
         self.assertEqual(user.study_level, User.StudyLevel.UNDERGRADUATE)
-        c.get('/accounts/logout/')
+        c.post('/accounts/logout/')
         login = c.post('/accounts/login/', {
             'username': 'newstudent',
             'password': 'StrongPass123',
@@ -360,13 +422,31 @@ class AuthenticationTests(TestCase):
         self.assertRedirects(response, '/dashboard/', fetch_redirect_response=False)
         self.assertEqual(str(c.session['_auth_user_id']), str(User.objects.get(username='student1').pk))
 
-        c.get('/accounts/logout/')
+        c.post('/accounts/logout/')
         self.assertNotIn('_auth_user_id', c.session)
         response = c.post('/accounts/login/', {
             'username': 'student1',
             'password': TEACHER_PASSWORD,
         })
         self.assertRedirects(response, '/dashboard/', fetch_redirect_response=False)
+
+    def test_logout_requires_post_and_valid_csrf_token(self):
+        user = User.objects.create_user('logout-csrf', 'logout@example.com', TEACHER_PASSWORD)
+        client = Client(enforce_csrf_checks=True)
+        client.force_login(user)
+        client.get('/accounts/profile/')
+
+        response = client.get('/accounts/logout/')
+        self.assertEqual(response.status_code, 405)
+        self.assertIn('_auth_user_id', client.session)
+
+        response = client.post('/accounts/logout/')
+        self.assertEqual(response.status_code, 403)
+        self.assertIn('_auth_user_id', client.session)
+
+        response = client.post('/accounts/logout/', HTTP_X_CSRFTOKEN=client.cookies['csrftoken'].value)
+        self.assertRedirects(response, '/')
+        self.assertNotIn('_auth_user_id', client.session)
 
     def test_teacher_registration_logout_and_relogin_with_same_credentials(self):
         c = Client()
@@ -400,7 +480,7 @@ class AuthenticationTests(TestCase):
         self.assertEqual(dashboard.status_code, 200)
         self.assertContains(dashboard, 'Pending review')
 
-        c.get('/accounts/logout/')
+        c.post('/accounts/logout/')
         self.assertNotIn('_auth_user_id', c.session)
         response = c.post('/accounts/login/', {
             'username': 'teacher1',

@@ -12,6 +12,8 @@ Dashboard Automatically Updated.
 Stack: Django 5 (server-rendered templates + DRF for the API layer), SQLite,
 Tailwind CSS (CDN), vanilla JS, Gemini API (optional — see AI Configuration).
 
+For production on Vercel, see [VERCEL_DEPLOYMENT.md](VERCEL_DEPLOYMENT.md). Production requires external PostgreSQL and object storage; Vercel's function upload limit also affects the existing teacher material upload form.
+
 ---
 
 ## 1. Setup & Installation

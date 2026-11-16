@@ -12,13 +12,13 @@ from .models import Resource, GuidanceRequest, TeachingSession, Review
 User = get_user_model()
 
 
-class ResourceForm(StyledFormMixin, forms.ModelForm):
+class ResourceMetadataForm(StyledFormMixin, forms.ModelForm):
     classrooms = forms.ModelMultipleChoiceField(queryset=Classroom.objects.none(), required=False,
                                                 widget=forms.CheckboxSelectMultiple, label='Share with classes')
 
     class Meta:
         model = Resource
-        fields = ('title', 'description', 'file', 'visibility', 'price', 'classrooms')
+        fields = ('title', 'description', 'visibility', 'price', 'classrooms')
 
     def __init__(self, *args, teacher=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -32,14 +32,24 @@ class ResourceForm(StyledFormMixin, forms.ModelForm):
             self.add_error('price', 'Paid resources need a price above zero.')
         if vis == Resource.Visibility.CLASSES and not c.get('classrooms'):
             self.add_error('classrooms', 'Pick at least one of your classes.')
-        f = c.get('file')
-        if f:
+        return c
+
+
+class ResourceForm(ResourceMetadataForm):
+    """Legacy local form upload, retained for development and non-Vercel hosts."""
+    class Meta(ResourceMetadataForm.Meta):
+        fields = ('title', 'description', 'file', 'visibility', 'price', 'classrooms')
+
+    def clean(self):
+        cleaned = super().clean()
+        uploaded_file = cleaned.get('file')
+        if uploaded_file:
             from .services import validate_upload, MarketError
             try:
-                validate_upload(f)
+                validate_upload(uploaded_file)
             except MarketError as exc:
                 self.add_error('file', str(exc))
-        return c
+        return cleaned
 
 
 class GuidanceForm(StyledFormMixin, forms.ModelForm):

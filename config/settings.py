@@ -3,6 +3,7 @@ Django settings for CerebroX AI.
 """
 import os
 from pathlib import Path
+from urllib.parse import unquote, urlparse, parse_qsl
 from dotenv import dotenv_values, load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -33,9 +34,28 @@ _DOTENV_GEMINI_API_KEY = _normalize_gemini_api_key(
 )
 load_dotenv(dotenv_path=ENV_FILE)
 
-SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-change-this-in-production')
-DEBUG = os.getenv('DEBUG', 'True') == 'True'
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '127.0.0.1,localhost').split(',')
+def _env_bool(name, default=False):
+    return _environment_value(name, str(default)).strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
+DEBUG = _env_bool('DEBUG', True)
+SECRET_KEY = _environment_value('SECRET_KEY', 'django-insecure-change-this-in-production')
+IS_VERCEL = _env_bool('VERCEL', False)
+configured_allowed_hosts = _environment_value('ALLOWED_HOSTS', '127.0.0.1,localhost')
+ALLOWED_HOSTS = [host.strip() for host in _environment_value(
+    'ALLOWED_HOSTS', '127.0.0.1,localhost'
+).split(',') if host.strip()]
+vercel_hostname = os.environ.get('VERCEL_URL', '').strip()
+if vercel_hostname and vercel_hostname not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(vercel_hostname)
+if IS_VERCEL and not configured_allowed_hosts.strip():
+    raise RuntimeError('Set exact production hostnames in ALLOWED_HOSTS for Vercel.')
+if IS_VERCEL and any(host.startswith('.') or '*' in host for host in ALLOWED_HOSTS):
+    raise RuntimeError('Use exact hostnames in ALLOWED_HOSTS on Vercel; wildcard hosts are not allowed.')
+if IS_VERCEL and (len(SECRET_KEY) < 50 or SECRET_KEY.startswith('django-insecure-')):
+    raise RuntimeError('Set a strong SECRET_KEY (at least 50 characters) in the Vercel project environment.')
+if IS_VERCEL and DEBUG:
+    raise RuntimeError('Set DEBUG=False in the Vercel project environment.')
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -66,6 +86,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -97,12 +118,29 @@ TEMPLATES = [
 WSGI_APPLICATION = 'config.wsgi.application'
 ASGI_APPLICATION = 'config.asgi.application'
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
-}
+DATABASE_URL = _environment_value('DATABASE_URL').strip()
+if DATABASE_URL:
+    parsed_database_url = urlparse(DATABASE_URL)
+    if parsed_database_url.scheme not in {'postgres', 'postgresql', 'postgresql+psycopg'}:
+        raise RuntimeError('DATABASE_URL must use PostgreSQL (postgresql://...).')
+    database_options = dict(parse_qsl(parsed_database_url.query))
+    database_options.setdefault('sslmode', 'require' if IS_VERCEL else 'prefer')
+    database_options.setdefault('prepare_threshold', None)  # compatible with transaction-pooled serverless URLs
+    DATABASES = {'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': unquote(parsed_database_url.path.lstrip('/')),
+        'USER': unquote(parsed_database_url.username or ''),
+        'PASSWORD': unquote(parsed_database_url.password or ''),
+        'HOST': parsed_database_url.hostname or '',
+        'PORT': parsed_database_url.port or '',
+        'CONN_MAX_AGE': 0,  # serverless invocations must not retain process-level DB connections
+        'DISABLE_SERVER_SIDE_CURSORS': True,
+        'OPTIONS': database_options,
+    }}
+else:
+    if IS_VERCEL:
+        raise RuntimeError('Set DATABASE_URL to a persistent PostgreSQL database in Vercel.')
+    DATABASES = {'default': {'ENGINE': 'django.db.backends.sqlite3', 'NAME': BASE_DIR / 'db.sqlite3'}}
 
 AUTH_USER_MODEL = 'accounts.User'
 
@@ -118,12 +156,69 @@ TIME_ZONE = 'Asia/Karachi'
 USE_I18N = True
 USE_TZ = True
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+OBJECT_STORAGE_BUCKET = _environment_value('OBJECT_STORAGE_BUCKET').strip()
+OBJECT_STORAGE_ENDPOINT_URL = _environment_value('OBJECT_STORAGE_ENDPOINT_URL').strip().rstrip('/')
+OBJECT_STORAGE_REGION = _environment_value('OBJECT_STORAGE_REGION', 'us-east-1').strip()
+OBJECT_STORAGE_ACCESS_KEY = _environment_value('OBJECT_STORAGE_ACCESS_KEY').strip()
+OBJECT_STORAGE_SECRET_KEY = _environment_value('OBJECT_STORAGE_SECRET_KEY').strip()
+USE_OBJECT_STORAGE = bool(OBJECT_STORAGE_BUCKET)
+if IS_VERCEL and not USE_OBJECT_STORAGE:
+    raise RuntimeError('Set OBJECT_STORAGE_BUCKET and object storage credentials in Vercel; uploads cannot persist on Vercel.')
+if IS_VERCEL and (not OBJECT_STORAGE_ACCESS_KEY or not OBJECT_STORAGE_SECRET_KEY):
+    raise RuntimeError('Set OBJECT_STORAGE_ACCESS_KEY and OBJECT_STORAGE_SECRET_KEY in Vercel.')
+
+STATICFILES_BACKEND = (
+    'whitenoise.storage.CompressedManifestStaticFilesStorage' if not DEBUG
+    else 'django.contrib.staticfiles.storage.StaticFilesStorage'
+)
+
+if USE_OBJECT_STORAGE:
+    STORAGES = {
+        'default': {'BACKEND': 'storages.backends.s3.S3Storage', 'OPTIONS': {'location': 'media'}},
+        'staticfiles': {'BACKEND': STATICFILES_BACKEND},
+    }
+    AWS_STORAGE_BUCKET_NAME = OBJECT_STORAGE_BUCKET
+    AWS_S3_ENDPOINT_URL = OBJECT_STORAGE_ENDPOINT_URL or None
+    AWS_S3_REGION_NAME = OBJECT_STORAGE_REGION
+    AWS_ACCESS_KEY_ID = OBJECT_STORAGE_ACCESS_KEY
+    AWS_SECRET_ACCESS_KEY = OBJECT_STORAGE_SECRET_KEY
+    AWS_S3_ADDRESSING_STYLE = 'path' if OBJECT_STORAGE_ENDPOINT_URL else 'virtual'
+    AWS_DEFAULT_ACL = None
+    AWS_QUERYSTRING_AUTH = True
+    AWS_S3_FILE_OVERWRITE = False
+else:
+    STORAGES = {
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': STATICFILES_BACKEND},
+    }
+
+if not DEBUG:
+    SECURE_SSL_REDIRECT = _env_bool('SECURE_SSL_REDIRECT', True)
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_REFERRER_POLICY = 'same-origin'
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SECURE_HSTS_SECONDS = int(_environment_value('SECURE_HSTS_SECONDS', '31536000'))
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = _env_bool('SECURE_HSTS_INCLUDE_SUBDOMAINS', True)
+    CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in _environment_value(
+        'CSRF_TRUSTED_ORIGINS'
+    ).split(',') if origin.strip()]
+    if IS_VERCEL and vercel_hostname:
+        generated_origin = f'https://{vercel_hostname}'
+        if generated_origin not in CSRF_TRUSTED_ORIGINS:
+            CSRF_TRUSTED_ORIGINS.append(generated_origin)
+    if IS_VERCEL and not CSRF_TRUSTED_ORIGINS:
+        raise RuntimeError('Set exact HTTPS origins in CSRF_TRUSTED_ORIGINS for Vercel.')
+    if IS_VERCEL and any('*' in origin for origin in CSRF_TRUSTED_ORIGINS):
+        raise RuntimeError('Use exact HTTPS origins in CSRF_TRUSTED_ORIGINS on Vercel; wildcard origins are not allowed.')
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
@@ -179,20 +274,24 @@ QUIZ_SUBMIT_GRACE_SECONDS = int(os.getenv('QUIZ_SUBMIT_GRACE_SECONDS', '10'))
 # Teacher materials are stored OUTSIDE MEDIA_ROOT and served only through a permission-checked view.
 PRIVATE_MEDIA_ROOT = BASE_DIR / 'private_media'
 MATERIAL_MAX_MB = int(os.getenv('MATERIAL_MAX_MB', '100'))
+AVATAR_UPLOAD_MAX_BYTES = 5 * 1024 * 1024
 DATA_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024   # non-file request bodies
+CLAMAV_HOST = _environment_value('CLAMAV_HOST').strip()
+CLAMAV_PORT = int(_environment_value('CLAMAV_PORT', '3310'))
+CLAMAV_TIMEOUT_SECONDS = int(_environment_value('CLAMAV_TIMEOUT_SECONDS', '360'))
 
 # SMTP for emailing quiz links. With no EMAIL_HOST configured, mail is printed to the console
 # (nothing is actually delivered) — set the EMAIL_* variables for real delivery.
-EMAIL_HOST = os.getenv('EMAIL_HOST', '')
+EMAIL_HOST = _environment_value('EMAIL_HOST').strip()
 if EMAIL_HOST:
     EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-    EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
-    EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
-    EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
-    EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True') == 'True'
+    EMAIL_PORT = int(_environment_value('EMAIL_PORT', '587'))
+    EMAIL_HOST_USER = _environment_value('EMAIL_HOST_USER')
+    EMAIL_HOST_PASSWORD = _environment_value('EMAIL_HOST_PASSWORD')
+    EMAIL_USE_TLS = _env_bool('EMAIL_USE_TLS', True)
 else:
     EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
-DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'CerebroX AI <no-reply@localhost>')
+DEFAULT_FROM_EMAIL = _environment_value('DEFAULT_FROM_EMAIL', 'CerebroX AI <no-reply@localhost>')
 
 # LiveKit credentials are server-side only. Recording requires explicit opt-in and
 # private S3-compatible storage; missing or placeholder values keep it unavailable.
