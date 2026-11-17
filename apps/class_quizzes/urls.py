@@ -9,6 +9,8 @@ urlpatterns = [
     path('teach/scan/', v.scanner, name='scanner'),
     path('teach/verify/', v.verify, name='verify'),
     path('teach/<int:quiz_id>/', v.teacher_detail, name='teacher_detail'),
+    path('teach/<int:quiz_id>/monitor/', v.monitor_dashboard, name='monitor_dashboard'),
+    path('teach/<int:quiz_id>/monitor/token/', v.monitor_token, name='monitor_token'),
     path('teach/<int:quiz_id>/schedule/', v.schedule_edit, name='schedule_edit'),
     path('teach/<int:quiz_id>/questions/add/', v.question_add, name='question_add'),
     path('teach/questions/<int:question_id>/delete/', v.question_delete, name='question_delete'),
@@ -29,6 +31,7 @@ urlpatterns = [
     path('attempts/<int:attempt_id>/event/', v.event, name='event'),
     path('attempts/<int:attempt_id>/submit/', v.submit, name='submit'),
     path('attempts/<int:attempt_id>/result/', v.result, name='result'),
+    path('attempts/<int:attempt_id>/monitor/token/', v.student_monitor_token, name='student_monitor_token'),
     path('q/<uuid:token>/', v.entry, name='entry'),
     path('q/<uuid:token>/start/', v.start, name='start'),
 ]

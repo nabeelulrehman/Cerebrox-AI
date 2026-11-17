@@ -4,7 +4,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from .forms import QuizGenerateForm, QuizSectionForm
 from .models import Quiz
 from .services import QuizGenerationInProgress, create_ai_quiz
-from .evaluation import submit_quiz
+from .evaluation import submit_quiz, update_preparation_recommendations
 from apps.learning.models import Course, Topic
 from apps.accounts.permissions import student_required
 
@@ -121,6 +121,7 @@ def quiz_submit(request, quiz_id):
             if key in request.POST:
                 answer_map[str(qa.question_id)] = request.POST[key]
         submit_quiz(quiz, answer_map)
+        update_preparation_recommendations(quiz)
         messages.success(request, 'Quiz submitted and evaluated.')
     return redirect('quizzes:result', quiz_id=quiz.id)
 

@@ -43,5 +43,13 @@
     });
   });
   startQuizTimer({{ quiz.duration_seconds }}, 'quiz-form');
+  document.getElementById('quiz-form')?.addEventListener('submit', () => {
+    const submitButton = document.getElementById('submit-quiz');
+    if (submitButton) {
+      submitButton.disabled = true;
+      submitButton.textContent = 'Evaluating answers...';
+      submitButton.setAttribute('aria-busy', 'true');
+    }
+  });
 </script>
 {% endblock %}

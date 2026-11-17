@@ -10,7 +10,7 @@
       {% if session.subject %}<p class="mt-1 text-lg">{{ session.subject }}</p>{% endif %}
       <p class="mt-2 text-sm" style="color:var(--txt-dim)">With {{ session.teacher.get_full_name|default:session.teacher.username }}</p>
     </div>
-    <span class="pill">{{ session.get_status_display }}</span>
+    <span class="pill">{% if session.status == 'ongoing' %}Live Now{% elif session.status == 'upcoming' %}Upcoming{% elif session.status == 'completed' %}Completed{% else %}{{ session.get_status_display }}{% endif %}</span>
   </div>
   {% if reminder_due and active_booking %}<p class="mt-4 text-sm" role="status">Reminder: this class is scheduled within the next 24 hours.</p>{% endif %}
   <div class="grid sm:grid-cols-2 gap-4 mt-5">
@@ -31,6 +31,7 @@
     </div>
   {% endif %}
   <div class="flex flex-wrap gap-2 mt-6">
+    {% if request.user.is_student and session.status == 'upcoming' %}<p class="w-full text-sm" role="status">This class has not started yet. The Join Live Class button appears once your teacher starts it.</p>{% elif request.user.is_student and session.status == 'completed' %}<p class="w-full text-sm" role="status">This class has ended.</p>{% endif %}
     {% if can_manage %}
       {% if session.status == 'upcoming' %}
         <a class="btn btn-ghost" href="{% url 'market:session_edit' session.id %}">Edit / Reschedule</a>
@@ -54,8 +55,8 @@
     {% elif session.status == 'upcoming' %}
       <span class="pill">Full</span>
     {% endif %}
-    {% if can_join %}
-      <a class="btn btn-primary" href="{% url 'market:session_classroom' session.id %}">Join Class</a>
+{% if can_join %}
+      <a class="btn btn-primary" href="{% url 'market:session_classroom' session.id %}">Join Live Class</a>
     {% endif %}
   </div>
 </section>

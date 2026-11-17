@@ -6,7 +6,7 @@ from django.shortcuts import get_object_or_404
 from .models import Quiz
 from .serializers import QuizSerializer, QuestionSerializer
 from .services import QuizGenerationInProgress, create_ai_quiz
-from .evaluation import submit_quiz
+from .evaluation import submit_quiz, update_preparation_recommendations
 from apps.learning.models import Topic
 from apps.accounts.permissions import IsStudentRole
 
@@ -48,6 +48,7 @@ class SubmitQuizAPIView(APIView):
         if not isinstance(answers, dict):
             return Response({'detail': 'answers must be an object of question_id -> option.'}, status=400)
         submit_quiz(quiz, answers)
+        update_preparation_recommendations(quiz)
         return Response(QuizSerializer(quiz).data)
 
 

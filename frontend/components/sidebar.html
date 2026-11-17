@@ -14,6 +14,7 @@
         <a href="{% url 'learning:courses' %}" class="navlink {% if current_view == 'learning:courses' or current_view == 'learning:course_edit' or current_view == 'learning:course_delete' or current_view == 'learning:topics' or current_view == 'learning:topic_edit' or current_view == 'learning:topic_delete' or current_view == 'learning:topic_detail' %}active{% endif %}">📚 My Courses</a>
         <a href="{% url 'learning:notes_dashboard' %}" class="navlink {% if current_view == 'learning:notes_dashboard' or current_view == 'learning:notes_generate' or current_view == 'learning:notes_generate_stream' or current_view == 'learning:notes_view' %}active{% endif %}">📝 AI Notes</a>
         <a href="{% url 'quizzes:dashboard_generate' %}" class="navlink {% if current_view == 'quizzes:dashboard_generate' or current_view == 'quizzes:generate' or current_view == 'quizzes:take' or current_view == 'quizzes:submit' or current_view == 'quizzes:result' or current_view == 'quizzes:history' %}active{% endif %}">🧠 AI Quiz</a>
+        <a href="{% url 'preparation:dashboard' %}" class="navlink {% if current_view|slice:":12" == 'preparation:' %}active{% endif %}">&#128197; Exam Preparation</a>
         <a href="{% url 'analytics:performance' %}" class="navlink {% if current_view == 'analytics:performance' %}active{% endif %}">📈 Performance</a>
         <a href="{% url 'analytics:recommendations' %}" class="navlink {% if current_view == 'analytics:recommendations' %}active{% endif %}">💡 Recommendations</a>
       </nav>

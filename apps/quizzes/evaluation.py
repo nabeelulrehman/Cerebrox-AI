@@ -1,5 +1,7 @@
 """Pure backend scoring logic — no AI involved (per FYP scope §18)."""
 from django.db import transaction
+from django.db.models import Q
+from django.utils import timezone
 
 
 @transaction.atomic
@@ -20,8 +22,40 @@ def submit_quiz(quiz, answers_by_question_id: dict):
     quiz.completed = True
     quiz.save(update_fields=['score', 'percentage', 'completed'])
 
+    if quiz.preparation_session_id:
+        from apps.preparation.models import LearningSession
+        session = quiz.preparation_session
+        if session.status != LearningSession.Status.COMPLETED:
+            session.status = LearningSession.Status.COMPLETED
+            session.completed_at = timezone.now()
+            session.save(update_fields=['status', 'completed_at'])
+
+    # Feed real completed practice attempts into any matching exam preparation plans.
+    from apps.preparation.models import PreparationPlan, PreparationTopic
+    from apps.preparation.services import record_readiness
+    plan_ids = PreparationTopic.objects.filter(
+        Q(learning_topic=quiz.topic) | Q(pk=quiz.preparation_topic_id),
+        plan__student=quiz.student, plan__active=True,
+    ).values_list('plan_id', flat=True).distinct()
+    for plan in PreparationPlan.objects.filter(pk__in=plan_ids):
+        record_readiness(plan, f'Quiz result recorded for {quiz.topic.name}.')
+
     _award_xp(quiz)
     return quiz
+
+
+def update_preparation_recommendations(quiz):
+    """Refresh adaptive guidance after the quiz transaction has committed."""
+    from apps.preparation.models import PreparationPlan, PreparationTopic
+    from apps.preparation.services import update_recommendations
+    plan_ids = PreparationTopic.objects.filter(
+        Q(learning_topic=quiz.topic) | Q(pk=quiz.preparation_topic_id),
+        plan__student=quiz.student, plan__active=True,
+    ).values_list('plan_id', flat=True).distinct()
+    if quiz.preparation_plan_id:
+        plan_ids = set(plan_ids) | {quiz.preparation_plan_id}
+    for plan in PreparationPlan.objects.filter(pk__in=plan_ids):
+        update_recommendations(plan)
 
 
 def _award_xp(quiz):

@@ -22,5 +22,7 @@ class QuizSerializer(serializers.ModelSerializer):
     class Meta:
         model = Quiz
         fields = ('id', 'topic', 'topic_name', 'difficulty', 'total_questions', 'score',
-                   'percentage', 'performance_label', 'completed', 'created_at')
-        read_only_fields = ('score', 'percentage', 'completed')
+                   'percentage', 'performance_label', 'completed', 'created_at',
+                   'preparation_plan', 'preparation_topic', 'preparation_session')
+        read_only_fields = ('score', 'percentage', 'completed', 'preparation_plan',
+                            'preparation_topic', 'preparation_session')

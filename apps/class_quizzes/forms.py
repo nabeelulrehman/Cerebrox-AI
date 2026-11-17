@@ -15,7 +15,7 @@ class ClassQuizForm(StyledFormMixin, forms.ModelForm):
     class Meta:
         model = ClassQuiz
         fields = ('title', 'description', 'start_at', 'end_at', 'duration_minutes', 'max_attempts',
-                  'shuffle_questions', 'negative_marking', 'supervised', 'result_visibility')
+                  'shuffle_questions', 'negative_marking', 'supervised', 'camera_monitored', 'result_visibility')
 
     def clean(self):
         c = super().clean()

@@ -16,3 +16,4 @@ cereenv/
 *.log
 .DS_Store
 private_media/
+.vercel

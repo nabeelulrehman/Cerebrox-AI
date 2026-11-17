@@ -36,7 +36,8 @@ def quiz_generation_lock(student_id, topics, difficulty, num_questions):
             cache.delete(lock_key)
 
 
-def create_ai_quiz(student, topic, difficulty, num_questions, extra_topics=None):
+def create_ai_quiz(student, topic, difficulty, num_questions, extra_topics=None,
+                   preparation_plan=None, preparation_topic=None, preparation_session=None):
     topics = []
     seen_topic_ids = set()
     for selected_topic in [topic, *(extra_topics or [])]:
@@ -84,6 +85,9 @@ def create_ai_quiz(student, topic, difficulty, num_questions, extra_topics=None)
             quiz = Quiz.objects.create(
                 student=student,
                 topic=topic,
+                preparation_plan=preparation_plan,
+                preparation_topic=preparation_topic,
+                preparation_session=preparation_session,
                 difficulty=difficulty,
                 study_level=study_level,
                 total_questions=len(question_records),

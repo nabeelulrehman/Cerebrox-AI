@@ -76,6 +76,7 @@ INSTALLED_APPS = [
     'apps.quizzes',
     'apps.analytics',
     'apps.dashboard',
+    'apps.preparation',
 
     # OPTIONAL teacher ecosystem (independent learning never depends on these)
     'apps.teachers',

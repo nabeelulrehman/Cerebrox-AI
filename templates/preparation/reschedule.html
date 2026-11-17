@@ -1,0 +1,5 @@
+{% extends "layouts/dashboard_layout.html" %}
+{% block title %}Review Reschedule{% endblock %}
+{% block content %}
+<a href="{% url 'preparation:detail' plan.id %}" class="grad-text">Back to plan</a><h1 class="font-display text-2xl font-bold my-4">Review schedule changes</h1><p class="mb-4">Completed progress and past assessment results remain unchanged. Unfinished activities will be moved to future available study days.</p><div class="glass p-5 mb-5">{% for session in sessions %}<p class="py-2 border-b">{{ session.title }} — {{ session.scheduled_at|date:"M j, Y g:i A" }} ({{ session.get_status_display }})</p>{% empty %}<p>No unfinished activities need rescheduling.</p>{% endfor %}</div><form method="post" action="{% url 'preparation:reschedule_apply' plan.id %}">{% csrf_token %}<button class="btn btn-primary">Apply revised schedule</button></form>
+{% endblock %}

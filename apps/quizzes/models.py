@@ -29,6 +29,18 @@ class Question(models.Model):
 class Quiz(models.Model):
     student = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='quizzes', on_delete=models.CASCADE)
     topic = models.ForeignKey(Topic, related_name='quizzes', on_delete=models.CASCADE)
+    preparation_plan = models.ForeignKey(
+        'preparation.PreparationPlan', null=True, blank=True,
+        related_name='quiz_attempts', on_delete=models.SET_NULL,
+    )
+    preparation_topic = models.ForeignKey(
+        'preparation.PreparationTopic', null=True, blank=True,
+        related_name='quiz_attempts', on_delete=models.SET_NULL,
+    )
+    preparation_session = models.ForeignKey(
+        'preparation.LearningSession', null=True, blank=True,
+        related_name='quiz_attempts', on_delete=models.SET_NULL,
+    )
     topics = models.ManyToManyField(Topic, related_name='quiz_attempts', blank=True)
     difficulty = models.CharField(max_length=10, default='Medium')
     study_level = models.CharField(max_length=60, blank=True, help_text='Snapshot of student.effective_study_level')
@@ -66,3 +78,11 @@ class QuizAnswer(models.Model):
 
     class Meta:
         unique_together = ('quiz', 'question')
+
+    @property
+    def correct_answer_text(self):
+        return dict(self.question.options()).get(self.question.correct_answer, '')
+
+    @property
+    def selected_answer_text(self):
+        return dict(self.question.options()).get((self.selected_answer or '').upper(), '')

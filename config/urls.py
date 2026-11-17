@@ -11,6 +11,7 @@ urlpatterns = [
     path('', include('apps.dashboard.urls_public', namespace='public')),
     path('accounts/', include('apps.accounts.urls', namespace='accounts')),
     path('dashboard/', include('apps.dashboard.urls', namespace='dashboard')),
+    path('preparation/', include('apps.preparation.urls', namespace='preparation')),
     path('learning/', include('apps.learning.urls', namespace='learning')),
     path('quizzes/', include('apps.quizzes.urls', namespace='quizzes')),
     path('analytics/', include('apps.analytics.urls', namespace='analytics')),

@@ -150,7 +150,7 @@ def _configured_client():
 
 def chat_json(
     system_prompt: str,
-    user_prompt: str,
+    user_prompt,
     max_output_tokens: int | None = None,
 ) -> dict:
     """

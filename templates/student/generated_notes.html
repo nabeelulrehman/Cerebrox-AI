@@ -1,4 +1,5 @@
 {% extends "layouts/dashboard_layout.html" %}
+{% load static %}
 {% block title %}Notes — {{ note.topic.name }}{% endblock %}
 {% block content %}
 <a href="{% url 'learning:topic_detail' note.topic.id %}" class="text-sm grad-text">&larr; {{ note.topic.name }}</a>
@@ -8,29 +9,39 @@
   {% if note.content.generated_by == "offline-fallback" %}&middot; <span style="color:var(--warn)">offline fallback (no AI key configured)</span>{% endif %}
 </p>
 
-<div class="glass p-6 flex flex-col gap-6 max-w-3xl">
-  <div><h2 class="font-display font-semibold mb-2">Introduction</h2><p style="color:var(--txt-dim)">{{ note.content.introduction }}</p></div>
-  <div><h2 class="font-display font-semibold mb-2">Explanation</h2><p style="color:var(--txt-dim)">{{ note.content.explanation }}</p></div>
+<div class="glass p-6 flex flex-col gap-6 max-w-3xl" data-notes-tutor data-explain-url="{% url 'learning:notes_explain' note.id %}" data-ask-url="{% url 'learning:notes_ask' note.id %}">
+  <div><h2 class="font-display font-semibold mb-2">Introduction</h2><p style="color:var(--txt-dim)">{{ note.content.introduction }}</p><button type="button" class="btn btn-ghost mt-2" data-explain="Introduction">More Explanation</button></div>
+  <div><h2 class="font-display font-semibold mb-2">Explanation</h2><p style="color:var(--txt-dim)">{{ note.content.explanation }}</p><button type="button" class="btn btn-ghost mt-2" data-explain="Explanation">More Explanation</button></div>
   <div>
     <h2 class="font-display font-semibold mb-2">Key terms</h2>
     <ul class="list-disc list-inside" style="color:var(--txt-dim)">
       {% for term in note.content.key_terms %}<li>{{ term }}</li>{% endfor %}
-    </ul>
+    </ul><button type="button" class="btn btn-ghost mt-2" data-explain="Key terms">More Explanation</button>
   </div>
   <div>
     <h2 class="font-display font-semibold mb-2">Examples</h2>
     <ul class="list-disc list-inside" style="color:var(--txt-dim)">
       {% for ex in note.content.examples %}<li>{{ ex }}</li>{% endfor %}
-    </ul>
+    </ul><button type="button" class="btn btn-ghost mt-2" data-explain="Examples">More Explanation</button>
   </div>
   <div>
     <h2 class="font-display font-semibold mb-2">Important points</h2>
     <ul class="list-disc list-inside" style="color:var(--txt-dim)">
       {% for p in note.content.important_points %}<li>{{ p }}</li>{% endfor %}
-    </ul>
+    </ul><button type="button" class="btn btn-ghost mt-2" data-explain="Important points">More Explanation</button>
   </div>
-  <div><h2 class="font-display font-semibold mb-2">Summary</h2><p style="color:var(--txt-dim)">{{ note.content.summary }}</p></div>
+  <div><h2 class="font-display font-semibold mb-2">Summary</h2><p style="color:var(--txt-dim)">{{ note.content.summary }}</p><button type="button" class="btn btn-ghost mt-2" data-explain="Summary">More Explanation</button></div>
+  <label class="block">Explanation level<select class="input mt-1" data-explain-level><option value="beginner">Beginner friendly</option><option value="advanced">Advanced</option></select></label>
+  <div data-explanation-output class="hidden rounded-xl p-4" style="background:var(--surface-2,rgba(127,127,127,.08))" aria-live="polite"></div>
+  <section class="border-t pt-5">
+    <h2 class="font-display font-semibold mb-3">Ask your AI tutor</h2>
+    <ol class="space-y-3 mb-4" data-tutor-messages aria-live="polite">
+      {% for item in conversation.messages %}<li><strong>{{ item.role|title }}:</strong> {{ item.content }}</li>{% endfor %}
+    </ol>
+    <form data-tutor-form>{% csrf_token %}<label class="sr-only" for="tutor-question">Your question</label><textarea id="tutor-question" name="question" maxlength="1200" required rows="3" class="input w-full" placeholder="Ask a question about these notes…"></textarea><button class="btn btn-primary mt-2" type="submit">Ask question</button><span data-tutor-status role="status" class="ml-3"></span></form>
+  </section>
 </div>
 
 <a href="{% url 'quizzes:generate' note.topic.id %}" class="btn btn-primary mt-6 w-max">Practice with a quiz →</a>
 {% endblock %}
+<script src="{% static 'js/notes_tutor.js' %}" defer></script>

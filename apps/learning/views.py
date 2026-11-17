@@ -8,7 +8,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
-from .models import Course, Topic, AINote
+from .models import Course, Topic, AINote, AINoteConversation
 from .forms import CourseForm, TopicForm, NotesGenerateForm, NotesSectionForm
 from apps.ai_engine.notes_generator import (
     NotesGenerationInProgress,
@@ -294,4 +294,56 @@ def notes_generate_stream(request):
 @student_required
 def notes_view(request, note_id):
     note = get_object_or_404(AINote, pk=note_id, student=request.user)
-    return render(request, 'student/generated_notes.html', {'note': note})
+    conversation, _ = AINoteConversation.objects.get_or_create(student=request.user, note=note)
+    return render(request, 'student/generated_notes.html', {'note': note, 'conversation': conversation})
+
+
+@student_required
+@require_POST
+def notes_explain(request, note_id):
+    note = get_object_or_404(AINote.objects.select_related('topic__course'), pk=note_id, student=request.user)
+    try:
+        from apps.ai_engine.gemini_client import chat_json
+        section = (request.POST.get('section') or 'whole topic').strip()[:120]
+        level = request.POST.get('level', 'beginner')
+        if level not in {'beginner', 'advanced'}:
+            return JsonResponse({'error': 'Choose beginner or advanced.'}, status=400)
+        payload = chat_json(
+            'You are a careful tutor. Return JSON with one string field named explanation. Include clear steps, examples and applications.',
+            f"Explain {section!r} from {note.topic.name!r} for a {level} learner. Existing notes context: "
+            f"{json.dumps(note.content, ensure_ascii=False)[:7000]}", max_output_tokens=1400,
+        )
+        explanation = payload.get('explanation')
+        if not isinstance(explanation, str) or not explanation.strip():
+            raise AIUnavailableError('The tutor returned an empty explanation.')
+        return JsonResponse({'explanation': explanation.strip()})
+    except AIUnavailableError as exc:
+        return JsonResponse({'error': str(exc)}, status=503)
+
+
+@student_required
+@require_POST
+def notes_ask(request, note_id):
+    note = get_object_or_404(AINote.objects.select_related('topic__course'), pk=note_id, student=request.user)
+    question = (request.POST.get('question') or '').strip()
+    if not question or len(question) > 1200:
+        return JsonResponse({'error': 'Enter a question up to 1,200 characters.'}, status=400)
+    conversation, _ = AINoteConversation.objects.get_or_create(student=request.user, note=note)
+    history = conversation.messages[-12:]
+    try:
+        from apps.ai_engine.gemini_client import chat_json
+        payload = chat_json(
+            'You are a helpful tutor. Answer using the supplied topic and notes. Be concise, explain steps, and say when a question is outside the topic. Return JSON with a string field answer.',
+            f"Topic: {note.topic.name}\nNotes: {json.dumps(note.content, ensure_ascii=False)[:5000]}\n"
+            f"Recent conversation: {json.dumps(history, ensure_ascii=False)}\nStudent question: {question}",
+            max_output_tokens=1200,
+        )
+        answer = payload.get('answer')
+        if not isinstance(answer, str) or not answer.strip():
+            raise AIUnavailableError('The tutor returned an empty answer.')
+        conversation.messages = (history + [{'role': 'user', 'content': question},
+                                             {'role': 'assistant', 'content': answer.strip()}])[-20:]
+        conversation.save(update_fields=['messages', 'updated_at'])
+        return JsonResponse({'answer': answer.strip(), 'messages': conversation.messages})
+    except AIUnavailableError as exc:
+        return JsonResponse({'error': str(exc)}, status=503)

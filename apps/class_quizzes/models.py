@@ -39,6 +39,7 @@ class ClassQuiz(models.Model):
         max_digits=4, decimal_places=2, default=Decimal('0'),
         help_text='Fraction of a question\'s marks deducted for a wrong MCQ answer (0 = off, 0.25 = quarter).')
     supervised = models.BooleanField(default=False, help_text='Require teacher QR verification before starting.')
+    camera_monitored = models.BooleanField(default=False, help_text='Students must consent to live camera monitoring by the teacher.')
     result_visibility = models.CharField(max_length=10, choices=Visibility.choices, default=Visibility.IMMEDIATE)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -113,6 +114,7 @@ class QuizAttempt(models.Model):
     grading_complete = models.BooleanField(default=False)
     results_released = models.BooleanField(default=False)
     teacher_feedback = models.TextField(blank=True)
+    monitoring_consent_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ['-created_at']

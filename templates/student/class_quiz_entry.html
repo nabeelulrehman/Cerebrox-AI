@@ -16,9 +16,19 @@
     {% if quiz.start_at %}<li>Opens: {{ quiz.start_at|date:"DATETIME_FORMAT" }}</li>{% endif %}
     {% if quiz.end_at %}<li>Closes: {{ quiz.end_at|date:"DATETIME_FORMAT" }}</li>{% endif %}
     {% if quiz.supervised %}<li><b>Supervised:</b> your teacher must scan a QR code on your screen before you can begin. Leaving the quiz tab or window pauses it until you are re-verified; the clock keeps running.</li>{% endif %}
+    {% if quiz.camera_monitored %}<li><b>Live camera monitoring:</b> your teacher will be able to view your live camera during this assessment. Video is not recorded or stored. Camera access must be granted before starting.</li>{% endif %}
   </ul>
   {% if reason %}<div class="alert alert-error">{{ reason }}</div>
-  {% else %}<form method="post" action="{% url 'class_quizzes:start' quiz.share_token %}">{% csrf_token %}<button class="btn btn-primary" type="submit">{% if open_attempt %}Resume attempt{% else %}Start quiz{% endif %}</button></form>{% endif %}
+  {% else %}<form method="post" action="{% url 'class_quizzes:start' quiz.share_token %}" {% if quiz.camera_monitored %}data-camera-preflight{% endif %}>{% csrf_token %}{% if quiz.camera_monitored %}<label class="flex gap-2 items-start my-4"><input type="checkbox" name="camera_consent" value="yes" required><span>I understand that my teacher will view my live camera during this quiz. I consent to camera access. The video will not be recorded or stored.</span></label><p data-camera-status role="status" class="text-sm mb-3"></p>{% endif %}<button class="btn btn-primary" type="submit">{% if open_attempt %}Resume attempt{% else %}Start quiz{% endif %}</button></form>{% endif %}
 </div>
 {% endif %}
 {% endblock %}
+{% block extra_js %}{% if quiz.camera_monitored %}<script>
+document.querySelector('[data-camera-preflight]')?.addEventListener('submit', async function (event) {
+  event.preventDefault(); const status=this.querySelector('[data-camera-status]'); const button=this.querySelector('button[type=submit]'); button.disabled=true;
+  try { if(!this.elements.camera_consent.checked) throw new Error('Consent is required.'); if(!navigator.mediaDevices?.getUserMedia) throw new Error('This browser does not support camera access.');
+    status.textContent='Checking camera permission…'; const stream=await navigator.mediaDevices.getUserMedia({video:true,audio:false}); stream.getTracks().forEach(track=>track.stop());
+    status.textContent='Camera permission granted. Starting your quiz…'; this.elements.camera_consent.value='yes'; this.submit();
+  } catch(error) { status.textContent=error.name==='NotAllowedError'?'Camera permission was denied. Allow camera access to take this monitored quiz.':error.message||'Camera unavailable.'; button.disabled=false; }
+});
+</script>{% endif %}{% endblock %}

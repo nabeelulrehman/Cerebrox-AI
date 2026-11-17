@@ -2,6 +2,7 @@
 {% block title %}Verification — {{ attempt.quiz.title }}{% endblock %}
 {% block content %}
 <div class="max-w-md mx-auto glass p-6 text-center" id="verify" data-status-url="{% url 'class_quizzes:status' attempt.id %}" data-take-url="{% url 'class_quizzes:take' attempt.id %}">
+  {% if attempt.quiz.camera_monitored %}<section class="mb-3" data-quiz-monitor="student" data-token-url="{% url 'class_quizzes:student_monitor_token' attempt.id %}">{% csrf_token %}<strong>Consented camera monitor</strong><p data-monitor-status role="status">Connecting to your camera monitor…</p><video data-local-camera autoplay muted playsinline class="w-48 mx-auto rounded-xl bg-black mt-2"></video><p data-monitor-error class="text-sm" role="alert"></p></section>{% endif %}
   <h1 class="font-display text-xl font-bold mb-1">{% if paused %}Quiz paused{% else %}Show this to your teacher{% endif %}</h1>
   <p class="text-sm mb-4" style="color:var(--txt-dim)">{% if paused %}Activity was detected outside the quiz. Your teacher must scan this code to resume. The timer is still running.{% else %}Your teacher scans this code to authorize your attempt. The timer starts once they do.{% endif %}</p>
   <div class="mx-auto bg-white p-3 rounded inline-block" style="width:260px">{{ qr|safe }}</div>
@@ -11,4 +12,4 @@
   <p id="vstate" class="text-sm mt-3" aria-live="polite">Waiting for teacher…</p>
 </div>
 {% endblock %}
-{% block extra_js %}{% load static %}<script src="{% static 'js/class_quiz.js' %}"></script><script>pollForAuthorization(document.getElementById('verify'));</script>{% endblock %}
+{% block extra_js %}{% load static %}<script src="{% static 'js/class_quiz.js' %}"></script><script>pollForAuthorization(document.getElementById('verify'));</script>{% if attempt.quiz.camera_monitored and livekit_ready %}<script src="https://cdn.jsdelivr.net/npm/livekit-client@2.23.0/dist/livekit-client.umd.min.js"></script><script src="{% static 'js/quiz_monitor.js' %}"></script>{% endif %}{% endblock %}

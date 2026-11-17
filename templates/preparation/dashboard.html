@@ -1,0 +1,23 @@
+{% extends "layouts/dashboard_layout.html" %}
+{% block title %}Exam Preparation{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-6xl space-y-6">
+  <header class="flex flex-wrap items-end justify-between gap-4"><div><p class="text-sm font-medium" style="color:var(--txt-dim)">PLAN · LEARN · PRACTICE</p><h1 class="font-display text-3xl font-bold mt-1">Exam preparation</h1><p class="text-sm mt-1" style="color:var(--txt-dim)">A personal schedule that adapts to your learning and quiz results.</p></div><a class="btn btn-primary" href="{% url 'preparation:create' %}">Create a plan</a></header>
+  <section class="grid gap-4 md:grid-cols-2 xl:grid-cols-3" aria-label="Your exam plans">
+    {% for item in cards %}
+    <article class="glass p-5 flex flex-col">
+      <div class="flex items-start justify-between gap-3"><div><p class="text-sm" style="color:var(--txt-dim)">{{ item.plan.exam_type|default:"Examination" }} · {{ item.plan.deadline }}</p><h2 class="font-display text-xl font-semibold mt-1">{{ item.plan.exam_name }}</h2></div><span class="pill">{{ item.plan.learning_level|title }}</span></div>
+      <div class="mt-5"><div class="flex justify-between text-sm"><span>Exam readiness</span><strong>{{ item.readiness.score }}%</strong></div><div class="h-2 rounded-full mt-2" style="background:var(--fill)"><div class="h-2 rounded-full" style="width:{{ item.readiness.score }}%;background:var(--grad)"></div></div><p class="text-xs mt-2" style="color:var(--txt-dim)">{{ item.readiness.confidence }} confidence</p></div>
+      <div class="grid grid-cols-2 gap-3 mt-4 text-sm"><p><span class="block font-semibold">{{ item.completed }}/{{ item.total }}</span><span style="color:var(--txt-dim)">activities done</span></p><p><span class="block font-semibold">{{ item.readiness.weak|length }}</span><span style="color:var(--txt-dim)">weak areas</span></p></div>
+      {% if item.next %}<p class="text-sm mt-4 p-3 rounded-lg" style="background:var(--fill)">Next: <strong>{{ item.next.title }}</strong><br><span style="color:var(--txt-dim)">{{ item.next_display }} ({{ item.plan.timezone }})</span></p>{% else %}<p class="text-sm mt-4" style="color:var(--txt-dim)">No upcoming activities</p>{% endif %}
+      {% if item.readiness.weak %}<p class="text-xs mt-3" style="color:var(--txt-dim)">Review: {{ item.readiness.weak|join:", " }}</p>{% endif %}
+      <a class="btn btn-primary mt-5 w-full" href="{% url 'preparation:detail' item.plan.id %}">Open study plan</a>
+    </article>
+    {% empty %}
+    <section class="glass p-6 md:col-span-2 xl:col-span-3"><h2 class="font-display text-xl font-semibold">Start with your next exam</h2><p class="text-sm my-3" style="color:var(--txt-dim)">Add your exam date, syllabus, and available study times to build a schedule.</p><a class="btn btn-primary" href="{% url 'preparation:create' %}">Create your first plan</a></section>
+    {% endfor %}
+  </section>
+  <p class="text-xs" style="color:var(--txt-dim)">Readiness is an estimate based on quiz performance and completed activities.</p>
+  <section class="glass p-5"><h2 class="font-display text-lg font-semibold">Notifications</h2><div class="divide-y mt-2" style="border-color:var(--line)">{% for note in notifications %}<article class="flex flex-wrap items-center justify-between gap-3 py-3"><div><strong class="text-sm">{{ note.title }}</strong><p class="text-sm">{{ note.message }}</p><time class="text-xs" style="color:var(--txt-dim)">{{ note.created_at|date:"M j, Y g:i A" }}</time></div>{% if not note.read_at %}<form method="post" action="{% url 'preparation:notification_read' note.id %}">{% csrf_token %}<button class="btn btn-ghost">Mark read</button></form>{% else %}<span class="text-xs" style="color:var(--txt-dim)">Read</span>{% endif %}</article>{% empty %}<p class="text-sm mt-2" style="color:var(--txt-dim)">No notifications yet.</p>{% endfor %}</div></section>
+</div>
+{% endblock %}

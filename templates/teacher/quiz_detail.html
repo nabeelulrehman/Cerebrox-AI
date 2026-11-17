@@ -13,6 +13,7 @@
     {% else %}
       <form method="post" action="{% url 'class_quizzes:set_status' quiz.id %}">{% csrf_token %}<button name="status" value="published" class="btn btn-ghost">Reopen</button></form>
     {% endif %}
+    {% if quiz.camera_monitored %}<a class="btn btn-ghost" href="{% url 'class_quizzes:monitor_dashboard' quiz.id %}">Live monitoring</a>{% endif %}
     <a class="btn btn-ghost" href="{% url 'class_quizzes:report' quiz.id %}">Results</a>
   </div>
 </div>

@@ -5,6 +5,7 @@
   <div><h1 class="font-display text-xl font-bold">{{ attempt.quiz.title }}</h1><p class="text-sm" style="color:var(--txt-faint)">Attempt {{ attempt.number }} &middot; {{ attempt.total_marks }} marks</p></div>
   <div class="glass-soft px-4 py-2 font-display font-semibold" style="border-color:var(--line)">⏱ <span id="time">--:--</span></div>
 </div>
+{% if attempt.quiz.camera_monitored %}<section class="glass p-4 mb-4" data-quiz-monitor="student" data-token-url="{% url 'class_quizzes:student_monitor_token' attempt.id %}"><div class="flex items-center gap-3"><span class="w-3 h-3 rounded-full bg-red-500" aria-hidden="true"></span><strong>Camera monitoring is active</strong><span data-monitor-status role="status">Connecting securely…</span></div><video data-local-camera autoplay muted playsinline class="mt-3 w-48 rounded-xl bg-black"></video><p data-monitor-error class="text-sm" role="alert"></p></section>{% endif %}
 <form method="post" action="{% url 'class_quizzes:submit' attempt.id %}" id="cq-form"
       data-remaining="{{ remaining }}" data-save-url="{% url 'class_quizzes:save' attempt.id %}"
       data-event-url="{% url 'class_quizzes:event' attempt.id %}" data-status-url="{% url 'class_quizzes:status' attempt.id %}"
@@ -23,4 +24,4 @@
   <button type="submit" class="btn btn-primary mt-4">Submit quiz</button>
 </form>
 {% endblock %}
-{% block extra_js %}{% load static %}<script src="{% static 'js/class_quiz.js' %}"></script><script>initClassQuiz(document.getElementById('cq-form'));</script>{% endblock %}
+{% block extra_js %}{% load static %}<script src="{% static 'js/class_quiz.js' %}"></script><script>initClassQuiz(document.getElementById('cq-form'));</script>{% if attempt.quiz.camera_monitored and livekit_ready %}<script src="https://cdn.jsdelivr.net/npm/livekit-client@2.23.0/dist/livekit-client.umd.min.js"></script><script src="{% static 'js/quiz_monitor.js' %}"></script>{% endif %}{% endblock %}

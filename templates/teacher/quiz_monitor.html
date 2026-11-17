@@ -1,0 +1,22 @@
+{% extends "layouts/teacher_layout.html" %}
+{% load static %}
+{% block title %}Live monitoring - {{ quiz.title }}{% endblock %}
+{% block content %}
+{% csrf_token %}
+<a href="{% url 'class_quizzes:teacher_detail' quiz.id %}" class="grad-text">Back to quiz</a>
+<h1 class="font-display text-2xl font-bold mt-3">Quiz live monitoring</h1>
+<p>{{ quiz.title }} / {{ quiz.classroom.name }} / {{ quiz.get_status_display }}</p>
+<p class="my-2 text-sm">Live video only. The application does not record or store these streams.</p>
+{% if not quiz.camera_monitored %}<div class="glass p-5 mt-4">This quiz was created as a standard quiz without camera monitoring.</div>
+{% elif not livekit_ready %}<div class="glass p-5 mt-4">LiveKit is unavailable: {{ livekit_issues|join:"; " }}</div>
+{% else %}
+<section class="glass p-5 mt-4" data-quiz-monitor="teacher" data-token-url="{% url 'class_quizzes:monitor_token' quiz.id %}">
+  <div class="flex justify-between"><h2 class="font-semibold">Participants</h2><span><strong data-monitor-count>0</strong> connected</span></div>
+  <p data-monitor-status role="status">Connecting to monitoring room...</p><p data-monitor-error class="text-sm" role="alert"></p>
+  <div data-monitor-grid class="grid sm:grid-cols-2 xl:grid-cols-3 gap-4 mt-4"></div>
+</section>
+<h2 class="font-display text-xl font-semibold mt-6">Quiz attempts</h2>
+<div class="grid sm:grid-cols-2 xl:grid-cols-3 gap-3 mt-3">{% for row in attempt_rows %}{% with attempt=row.attempt %}<article class="glass p-4" data-student-identity="quiz-student-{{ attempt.student_id }}"><strong>{{ attempt.student.get_full_name|default:attempt.student.username }}</strong><p>{{ attempt.get_status_display }}</p><p class="text-sm">{% if attempt.started_at %}Started {{ attempt.started_at|date:"g:i A" }}{% if row.remaining != None %} / {{ row.remaining }} seconds remain{% endif %}{% else %}Waiting for teacher verification{% endif %}</p><span class="pill">Camera consent recorded</span><p class="text-xs mt-2" data-stream-status>Camera not connected</p></article>{% endwith %}{% empty %}<p>No consented attempts yet.</p>{% endfor %}</div>
+<script src="https://cdn.jsdelivr.net/npm/livekit-client@2.23.0/dist/livekit-client.umd.min.js"></script><script src="{% static 'js/quiz_monitor.js' %}"></script>
+{% endif %}
+{% endblock %}

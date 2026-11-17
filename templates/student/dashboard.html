@@ -8,6 +8,7 @@
     <h1 class="font-display text-2xl font-bold">Welcome, {{ user.first_name|default:user.username }}!</h1>
     <p>Here's how you're doing across CerebroX AI.</p>
   </header>
+  <a class="btn btn-primary mb-4 inline-block" href="{% url 'preparation:dashboard' %}">Personalized Exam Preparation</a>
 
   <div class="student-stats">
     {% include "components/stat_card.html" with label="Total Quizzes" value=overview.total_quizzes %}

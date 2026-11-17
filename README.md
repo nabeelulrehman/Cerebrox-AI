@@ -182,6 +182,15 @@ CerebroX-AI/
 └── tests/                   21 tests, all passing (incl. cross-student isolation checks)
 ```
 
+## Personalized exam preparation reminders
+
+Students can create plans at `/preparation/`. A scheduler should run
+`python manage.py send_preparation_reminders` at least daily (for example, from
+the deployment's cron or scheduled-job service). The command marks overdue
+activities as missed, creates deduplicated in-app reminders, and sends email
+only for plans where the student enabled email reminders and supplied an email
+address. No browser session is needed for reminders to run.
+
 ## Live classroom recording
 
 Recording uses LiveKit Cloud room-composite Egress and a private S3-compatible

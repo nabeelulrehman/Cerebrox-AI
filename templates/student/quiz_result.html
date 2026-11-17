@@ -1,32 +1,36 @@
 {% extends "layouts/dashboard_layout.html" %}
-{% block title %}Quiz Result — {{ quiz.topic.name }}{% endblock %}
+{% block title %}Quiz Result - {{ quiz.topic.name }}{% endblock %}
 {% block content %}
-<h1 class="font-display text-2xl font-bold mb-6">Quiz result</h1>
-<div class="glass p-6 max-w-lg mb-8">
-  <p class="font-display text-4xl font-bold grad-text">{{ quiz.score }}/{{ quiz.total_questions }}</p>
-  <p class="mt-1" style="color:var(--txt-dim)">{{ quiz.percentage }}% &middot; {{ quiz.performance_label }}</p>
-  <div class="grid grid-cols-2 gap-4 mt-4 text-sm">
-    <div><p style="color:var(--txt-faint)">Correct</p><p class="font-semibold" style="color:var(--ok)">{{ quiz.score }}</p></div>
-    <div><p style="color:var(--txt-faint)">Wrong</p><p class="font-semibold" style="color:var(--bad)">{{ quiz.wrong_count }}</p></div>
+<div class="mx-auto max-w-4xl">
+  <h1 class="font-display text-2xl font-bold mb-5">Quiz result</h1>
+  <section class="glass p-5 sm:p-6 mb-7">
+    <p class="font-display text-4xl font-bold grad-text">{{ quiz.score }}/{{ quiz.total_questions }}</p>
+    <p class="mt-1" style="color:var(--txt-dim)">{{ quiz.percentage }}% · {{ quiz.performance_label }}</p>
+    <div class="grid grid-cols-2 gap-4 mt-4 text-sm"><div><span class="block" style="color:var(--txt-faint)">Correct</span><strong style="color:var(--ok)">{{ quiz.score }}</strong></div><div><span class="block" style="color:var(--txt-faint)">Wrong</span><strong style="color:var(--bad)">{{ quiz.wrong_count }}</strong></div></div>
+  </section>
+
+  <h2 class="font-display font-semibold mb-3">Answer review</h2>
+  {% if quiz.wrong_count %}<p class="text-sm mb-3" style="color:var(--warn)">Review these missed questions and explanations to strengthen weak concepts.</p>{% endif %}
+  <div class="flex flex-col gap-3">
+    {% for answer in answers %}
+    <article class="glass-soft p-4">
+      <p class="font-medium mb-2">{{ forloop.counter }}. {{ answer.question.question }}</p>
+      <p class="text-sm">Your answer: <span class="{% if answer.correct %}text-green-400{% else %}text-red-400{% endif %}">{{ answer.selected_answer|default:"Not answered" }}{% if answer.selected_answer_text %} · {{ answer.selected_answer_text }}{% endif %}</span></p>
+      <p class="text-sm">Correct answer: <span style="color:var(--ok)">{{ answer.question.correct_answer }} · {{ answer.correct_answer_text }}</span></p>
+      {% if answer.question.explanation %}<p class="text-sm mt-2" style="color:var(--txt-dim)">{{ answer.question.explanation }}</p>{% endif %}
+    </article>
+    {% endfor %}
   </div>
-</div>
 
-<h2 class="font-display font-semibold mb-3">Review</h2>
-<div class="flex flex-col gap-3 max-w-3xl">
-  {% for a in answers %}
-    <div class="glass-soft p-4">
-      <p class="font-medium mb-2">{{ forloop.counter }}. {{ a.question.question }}</p>
-      <p class="text-sm">
-        Your answer: <span class="{% if a.correct %}text-green-400{% else %}text-red-400{% endif %}">{{ a.selected_answer|default:"—" }}</span>
-        &middot; Correct answer: <span style="color:var(--ok)">{{ a.question.correct_answer }}</span>
-      </p>
-      {% if a.question.explanation %}<p class="text-xs mt-1" style="color:var(--txt-faint)">{{ a.question.explanation }}</p>{% endif %}
-    </div>
-  {% endfor %}
-</div>
+  {% if quiz.preparation_plan_id %}
+  <section class="glass p-4 mt-6">
+    <h2 class="font-display font-semibold">Exam preparation update</h2>
+    <p class="text-sm mt-1">This attempt was saved to {{ quiz.preparation_plan.exam_name }}{% if quiz.preparation_topic %} · {{ quiz.preparation_topic.name }}{% endif %}. Your readiness score reflects this result.</p>
+    {% if quiz.preparation_plan.next_recommendations %}<p class="text-sm whitespace-pre-line mt-2">{{ quiz.preparation_plan.next_recommendations }}</p>{% endif %}
+    <a class="btn btn-primary mt-3" href="{% url 'preparation:detail' quiz.preparation_plan_id %}">Return to exam plan</a>
+  </section>
+  {% endif %}
 
-<div class="flex gap-3 mt-6">
-  <a href="{% url 'analytics:performance' %}" class="btn btn-ghost">View performance</a>
-  <a href="{% url 'learning:topic_detail' quiz.topic.id %}" class="btn btn-primary">Back to topic</a>
+  <div class="flex flex-wrap gap-3 mt-6"><a href="{% url 'analytics:performance' %}" class="btn btn-ghost">View performance</a><a href="{% url 'learning:topic_detail' quiz.topic.id %}" class="btn btn-primary">Back to topic</a></div>
 </div>
 {% endblock %}

@@ -1,6 +1,7 @@
 import json
 
 from django.conf import settings
+from datetime import timedelta
 from django.contrib import messages
 from django.http import JsonResponse, Http404
 from django.shortcuts import get_object_or_404, redirect, render
@@ -11,6 +12,8 @@ from django.views.decorators.http import require_POST, require_GET
 from apps.accounts.permissions import student_required, verified_teacher_required
 from apps.ai_engine.gemini_client import AIUnavailableError
 from apps.classrooms.models import Classroom, Enrollment
+from apps.marketplace.services import livekit_ready, livekit_configuration_issues
+from livekit import api as livekit_api
 from . import services
 from .forms import ClassQuizForm, ClassQuestionForm, AIGenerateForm, QuizScheduleForm
 from .models import ClassQuiz, ClassQuestion, QuizAttempt, AttemptAnswer
@@ -21,6 +24,20 @@ from .services import QuizAccessError
 def _own_quiz(request, quiz_id):
     return get_object_or_404(ClassQuiz.objects.select_related('classroom'), pk=quiz_id,
                              classroom__teacher=request.user)
+
+
+def _quiz_monitor_room(quiz):
+    return f'cerebrox-quiz-{quiz.pk}'
+
+
+def _quiz_monitor_token(quiz, user, *, teacher=False):
+    token = livekit_api.AccessToken(settings.LIVEKIT_API_KEY, settings.LIVEKIT_API_SECRET)
+    token.with_identity(f'quiz-{"teacher" if teacher else "student"}-{user.pk}')
+    token.with_name(user.get_full_name() or user.get_username())
+    token.with_ttl(timedelta(minutes=10))
+    token.with_grants(livekit_api.VideoGrants(room_join=True, room=_quiz_monitor_room(quiz),
+        can_publish=not teacher, can_subscribe=teacher, can_publish_data=False, room_admin=False))
+    return token.to_jwt()
 
 
 def _share_link(request, quiz):
@@ -66,6 +83,27 @@ def teacher_detail(request, quiz_id):
         'teacher/quiz_detail.html',
         _teacher_quiz_detail_context(request, quiz),
     )
+
+
+@verified_teacher_required
+def monitor_dashboard(request, quiz_id):
+    quiz = _own_quiz(request, quiz_id)
+    attempts = quiz.attempts.filter(monitoring_consent_at__isnull=False).exclude(
+        status=QuizAttempt.Status.SUBMITTED).select_related('student').order_by('started_at')
+    attempt_rows = [{'attempt': attempt, 'remaining': max(0, int((attempt.deadline_at - timezone.now()).total_seconds()))
+                     if attempt.deadline_at else None} for attempt in attempts]
+    return render(request, 'teacher/quiz_monitor.html', {'quiz': quiz, 'attempt_rows': attempt_rows,
+        'livekit_ready': livekit_ready(), 'livekit_issues': livekit_configuration_issues()})
+
+
+@verified_teacher_required
+@require_POST
+def monitor_token(request, quiz_id):
+    quiz = _own_quiz(request, quiz_id)
+    if not quiz.camera_monitored or not livekit_ready():
+        return JsonResponse({'error': 'Live quiz monitoring is unavailable.'}, status=503)
+    token = _quiz_monitor_token(quiz, request.user, teacher=True)
+    return JsonResponse({'url': settings.LIVEKIT_URL, 'token': token}, headers={'Cache-Control': 'private, no-store'})
 
 
 @verified_teacher_required
@@ -323,6 +361,13 @@ def entry(request, token):
 @require_POST
 def start(request, token):
     quiz = get_object_or_404(ClassQuiz, share_token=token)
+    if quiz.camera_monitored:
+        if request.POST.get('camera_consent') != 'yes':
+            messages.error(request, 'Agree to live camera monitoring before starting this quiz.')
+            return redirect('class_quizzes:entry', token=token)
+        if not livekit_ready():
+            messages.error(request, 'Live camera monitoring is not configured. Contact your teacher.')
+            return redirect('class_quizzes:entry', token=token)
     try:
         attempt = services.start_or_resume_attempt(request.user, quiz)
     except QuizAccessError as exc:
@@ -330,6 +375,9 @@ def start(request, token):
             raise Http404
         messages.error(request, str(exc))
         return redirect('class_quizzes:entry', token=token)
+    if quiz.camera_monitored and attempt.monitoring_consent_at is None:
+        attempt.monitoring_consent_at = timezone.now()
+        attempt.save(update_fields=['monitoring_consent_at'])
     return redirect('class_quizzes:take', attempt_id=attempt.id)
 
 
@@ -357,12 +405,24 @@ def take(request, attempt_id):
         return render(request, 'student/class_quiz_verify.html', {
             'attempt': attempt, 'qr': services.qr_svg(raw), 'raw': raw,
             'ttl': int(services.TOKEN_TTL.total_seconds()),
-            'paused': attempt.status == QuizAttempt.Status.PAUSED})
+            'paused': attempt.status == QuizAttempt.Status.PAUSED, 'livekit_ready': livekit_ready()})
     answers = {a.question_id: a for a in attempt.answers.all()}
     questions = {q.id: q for q in attempt.quiz.questions.all()}
     rows = [(questions[qid], answers.get(qid)) for qid in attempt.question_order if qid in questions]
     remaining = max(0, int((attempt.deadline_at - timezone.now()).total_seconds()))
-    return render(request, 'student/class_quiz_take.html', {'attempt': attempt, 'rows': rows, 'remaining': remaining})
+    return render(request, 'student/class_quiz_take.html', {'attempt': attempt, 'rows': rows, 'remaining': remaining,
+        'livekit_ready': livekit_ready()})
+
+
+@student_required
+@require_POST
+def student_monitor_token(request, attempt_id):
+    attempt = _own_attempt(request, attempt_id)
+    if (not attempt.quiz.camera_monitored or attempt.monitoring_consent_at is None
+            or attempt.status == QuizAttempt.Status.SUBMITTED or not livekit_ready()):
+        return JsonResponse({'error': 'Camera monitoring is not available for this attempt.'}, status=403)
+    token = _quiz_monitor_token(attempt.quiz, request.user)
+    return JsonResponse({'url': settings.LIVEKIT_URL, 'token': token}, headers={'Cache-Control': 'private, no-store'})
 
 
 @student_required
