@@ -4,6 +4,8 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
 from apps.accounts.permissions import verified_teacher_required, student_required
+from apps.marketplace.models import TeachingSession, SessionBooking
+from apps.marketplace import services as market_services
 from . import services
 from .forms import ClassroomForm, InviteForm, JoinCodeForm, AnnouncementForm
 from .models import Classroom, Enrollment, Announcement
@@ -208,6 +210,14 @@ def student_class(request, class_id):
     if not services.is_active_member(request.user, c):
         raise PermissionDenied
     enr = Enrollment.objects.get(classroom=c, student=request.user)
+    live_sessions = list(TeachingSession.objects.filter(
+        classroom=c,
+    ).exclude(status=TeachingSession.Status.CANCELLED).order_by('starts_at'))
+    for session in live_sessions:
+        market_services.sync_session_status(session)
+        session.student_booking = SessionBooking.objects.filter(
+            session=session, student=request.user,
+        ).first()
     return render(request, 'student/class_detail.html', {
         'c': c, 'enr': enr,
         'announcements': c.announcements.all()[:20],
@@ -215,4 +225,5 @@ def student_class(request, class_id):
         'resources': c.resources.filter(
             visibility='classes', scan_status='clean',
         ),
+        'live_sessions': live_sessions,
     })

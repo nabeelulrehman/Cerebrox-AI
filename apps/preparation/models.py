@@ -71,6 +71,7 @@ class LearningSession(models.Model):
     duration_minutes = models.PositiveSmallIntegerField(default=60)
     kind = models.CharField(max_length=12, choices=Kind.choices, default=Kind.STUDY)
     status = models.CharField(max_length=12, choices=Status.choices, default=Status.PENDING, db_index=True)
+    started_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     history = models.JSONField(default=list, blank=True)
 

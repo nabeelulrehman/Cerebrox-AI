@@ -11,7 +11,8 @@
   </div>
 </div>
 
-<form method="post" action="{% url 'quizzes:submit' quiz.id %}" id="quiz-form">
+{% if quiz.preparation_plan_id %}<p class="mb-4"><a class="grad-text" href="{% url 'preparation:detail' quiz.preparation_plan_id %}">← Back to Exam Preparation</a></p>{% endif %}
+<form method="post" action="{% if quiz.preparation_plan_id %}{% url 'preparation:quiz_submit' quiz.id %}{% else %}{% url 'quizzes:submit' quiz.id %}{% endif %}" id="quiz-form">
   {% csrf_token %}
   <div class="grid gap-4">
     {% for a in answers %}

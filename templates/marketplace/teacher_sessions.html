@@ -10,6 +10,7 @@
         <a class="font-medium grad-text" href="{% url 'market:session_detail' item.id %}">{{ item.title }}</a>
         <p class="text-sm mt-1" style="color:var(--txt-dim)">{{ item.starts_at|date:"M j, Y" }} · {{ item.starts_at|date:"g:i A" }}–{{ item.ends_at|date:"g:i A" }} · {{ item.get_status_display }}</p>
         <p class="text-xs" style="color:var(--txt-faint)">{{ item.bookings.count }} total bookings · LiveKit classroom</p>
+        <p class="text-xs mt-1" style="color:var(--txt-dim)">{{ item.get_access_type_display }}{% if item.classroom %} · {{ item.classroom.name }}{% endif %}{% if item.access_type == 'class_public' or item.access_type == 'public_only' %} · Public booking: PKR {{ item.price }}{% endif %}</p>
         {% if item.recording_status == 'completed' and recording_ready %}
           <a class="btn btn-ghost mt-2" href="{% url 'market:session_recording_play' item.id %}">Play class recording</a>
         {% elif item.recording_status == 'completed' %}
@@ -31,4 +32,24 @@
     {% if session %}<a class="btn btn-ghost w-max" href="{% url 'market:session_detail' session.id %}">Back to session</a>{% endif %}
   </form>
 </div>
+{% endblock %}
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const access = document.getElementById('id_access_type');
+  const classroom = document.getElementById('id_classroom');
+  const price = document.getElementById('id_price');
+  if (!access || !classroom || !price) return;
+  const field = classroom.parentElement;
+  const priceField = price.parentElement;
+  const updateClassField = () => {
+    const needsClass = access.value === 'class_only' || access.value === 'class_public';
+    field.hidden = !needsClass;
+    classroom.required = needsClass;
+    priceField.hidden = access.value === 'class_only';
+  };
+  access.addEventListener('change', updateClassField);
+  updateClassField();
+});
+</script>
 {% endblock %}

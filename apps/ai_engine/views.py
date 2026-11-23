@@ -7,7 +7,7 @@ from apps.learning.models import Topic, AINote
 from .serializers import NotesGenerateSerializer, MCQGenerateSerializer
 from .notes_generator import NotesGenerationInProgress, generate_notes, notes_generation_lock
 from .mcq_generator import generate_questions
-from .gemini_client import AIUnavailableError
+from .gemini_client import AIUnavailableError, user_facing_error_message
 
 
 class GenerateNotesAPIView(APIView):
@@ -35,7 +35,7 @@ class GenerateNotesAPIView(APIView):
         except NotesGenerationInProgress as exc:
             return Response({'error': str(exc)}, status=409)
         except AIUnavailableError as exc:
-            return Response({'error': str(exc)}, status=503)
+            return Response({'error': user_facing_error_message(exc)}, status=503)
 
         return Response({'id': note.id, 'content': content})
 

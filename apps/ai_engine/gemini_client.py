@@ -15,9 +15,26 @@ class AIUnavailableError(Exception):
     """Raised when no AI provider is configured or the call fails."""
 
 
+def user_facing_error_message(exc: Exception | None = None) -> str:
+    """Return a safe, actionable message without exposing provider response details."""
+    if exc and 'timed out' in str(exc).lower():
+        return 'AI generation is taking longer than expected. Please try again shortly.'
+    return 'AI generation is temporarily unavailable. Please try again shortly.'
+
+
 def is_configured() -> bool:
     api_key = (settings.GEMINI_API_KEY or '').strip()
     return bool(api_key)
+
+
+def _configured_models() -> tuple[str, ...]:
+    """Return configured models in priority order, without duplicate attempts."""
+    models = (
+        getattr(settings, 'GEMINI_MODEL', ''),
+        getattr(settings, 'GEMINI_FALLBACK_MODEL', ''),
+        getattr(settings, 'GEMINI_FALLBACK_MODEL_2', ''),
+    )
+    return tuple(dict.fromkeys(model.strip() for model in models if model and model.strip()))
 
 
 def _safe_error_details(exc: Exception) -> str:
@@ -33,16 +50,6 @@ def _safe_error_details(exc: Exception) -> str:
     if request_id:
         details.append(f'request_id={request_id}')
     return ', '.join(details)
-
-
-def _is_capacity_error(exc: Exception) -> bool:
-    """Return whether Gemini reported a temporary overload or rate limit."""
-    status_code = getattr(exc, 'status_code', None)
-    message = str(exc).upper()
-    return status_code in (429, 503) or any(
-        marker in message
-        for marker in ('429 TOO MANY REQUESTS', '503 UNAVAILABLE', 'RESOURCE_EXHAUSTED')
-    )
 
 
 def _is_invalid_api_key_error(exc: Exception) -> bool:
@@ -66,9 +73,11 @@ def _invalid_api_key_message() -> str:
 
 def _is_retryable_error(exc: Exception) -> bool:
     status_code = getattr(exc, 'status_code', None)
-    return isinstance(exc, httpx.TransportError) or status_code in {
-        408, 429, 500, 502, 503, 504,
-    }
+    return (
+        isinstance(exc, httpx.TransportError)
+        or status_code in (408, 429)
+        or isinstance(status_code, int) and 500 <= status_code < 600
+    )
 
 
 def _retry_delay(attempt: int) -> float:
@@ -81,8 +90,8 @@ def generation_lock_timeout_seconds(sequential_requests: int = 1) -> int:
     one_model_budget = (
         settings.GEMINI_REQUEST_TIMEOUT_MS / 1000 * (retries + 1) + retry_wait
     )
-    attempts_with_fallback = one_model_budget * 2
-    return max(180, math.ceil((attempts_with_fallback + 60) * sequential_requests))
+    models = max(1, len(_configured_models()))
+    return max(180, math.ceil((one_model_budget * models + 60) * sequential_requests))
 
 
 def _call_with_retries(request, *, model: str, operation: str):
@@ -159,47 +168,45 @@ def chat_json(
     call returns an unusable result.
     """
     started = time.perf_counter()
-    model = settings.GEMINI_MODEL
+    models = _configured_models()
+    model = models[0] if models else getattr(settings, 'GEMINI_MODEL', '')
     try:
         client = _configured_client()
         config = _request_config(system_prompt, max_output_tokens)
-        logger.info('Sending Gemini generate_content request: model=%s', model)
-        try:
-            response = _call_with_retries(
-                lambda: client.models.generate_content(
+        parsed = None
+        raw = ''
+        last_model_error = None
+        for index, candidate_model in enumerate(models or (model,)):
+            model = candidate_model
+            logger.info('Sending Gemini generate_content request: model=%s', model)
+            try:
+                response = _call_with_retries(
+                    lambda: client.models.generate_content(
+                        model=model,
+                        contents=user_prompt,
+                        config=config,
+                    ),
                     model=model,
-                    contents=user_prompt,
-                    config=config,
-                ),
-                model=model,
-                operation='generate_content',
-            )
-        except Exception as exc:
-            fallback_model = getattr(settings, 'GEMINI_FALLBACK_MODEL', '')
-            if not _is_capacity_error(exc) or not fallback_model or fallback_model == model:
-                raise
-            logger.warning(
-                'Gemini model %s is temporarily unavailable; retrying with fallback model=%s',
-                model,
-                fallback_model,
-            )
-            model = fallback_model
-            response = _call_with_retries(
-                lambda: client.models.generate_content(
-                    model=model,
-                    contents=user_prompt,
-                    config=config,
-                ),
-                model=model,
-                operation='generate_content',
-            )
-        raw = response.text
+                    operation='generate_content',
+                )
+                raw = response.text
+                if raw is None or not str(raw).strip():
+                    raise AIUnavailableError('Gemini returned an empty response.')
+                parsed = json.loads(raw)
+                if not isinstance(parsed, dict):
+                    raise AIUnavailableError('Gemini returned a non-object JSON payload.')
+                break
+            except Exception as exc:
+                last_model_error = exc
+                if _is_invalid_api_key_error(exc) or index == len(models or (model,)) - 1:
+                    raise
+                logger.warning(
+                    'Gemini model failed; moving to fallback model=%s',
+                    (models or (model,))[index + 1],
+                )
+        if parsed is None:
+            raise last_model_error or AIUnavailableError('Gemini did not return a response.')
         elapsed_ms = round((time.perf_counter() - started) * 1000)
-        if raw is None or not str(raw).strip():
-            raise AIUnavailableError('Gemini returned an empty response.')
-        parsed = json.loads(raw)
-        if not isinstance(parsed, dict):
-            raise AIUnavailableError('Gemini returned a non-object JSON payload.')
         logger.info(
             'Gemini response parsed: model=%s elapsed_ms=%s output_chars=%s',
             model, elapsed_ms, len(raw),
@@ -240,7 +247,8 @@ def stream_json(
     max_output_tokens: int | None = None,
 ):
     """Yield response text chunks and return the validated JSON object at completion."""
-    model = settings.GEMINI_MODEL
+    models = _configured_models()
+    model = models[0] if models else getattr(settings, 'GEMINI_MODEL', '')
     started = time.perf_counter()
     first_chunk_ms = None
     emitted_text = False
@@ -248,12 +256,11 @@ def stream_json(
     try:
         client = _configured_client()
         config = _request_config(system_prompt, max_output_tokens)
-        fallback_model = getattr(settings, 'GEMINI_FALLBACK_MODEL', '')
         max_retries = max(0, settings.GEMINI_MAX_RETRIES)
-        logger.info('Sending Gemini streaming request: model=%s', model)
-
-        while True:
-            retry_fallback = False
+        for model_index, candidate_model in enumerate(models or (model,)):
+            model = candidate_model
+            logger.info('Sending Gemini streaming request: model=%s', model)
+            completed = False
             for attempt in range(max_retries + 1):
                 try:
                     for response in client.models.generate_content_stream(
@@ -268,7 +275,9 @@ def stream_json(
                             emitted_text = True
                             output.append(text)
                             yield text
-                    retry_fallback = False
+                    completed = bool(output)
+                    if not completed:
+                        raise AIUnavailableError('Gemini returned an empty response.')
                     break
                 except Exception as exc:
                     if emitted_text:
@@ -287,22 +296,17 @@ def stream_json(
                         time.sleep(delay)
                         continue
                     if (
-                        _is_capacity_error(exc)
-                        and fallback_model
-                        and fallback_model != model
+                        not _is_invalid_api_key_error(exc)
+                        and model_index < len(models or (model,)) - 1
                     ):
                         logger.warning(
-                            'Gemini model %s is temporarily unavailable; retrying with fallback model=%s',
-                            model,
-                            fallback_model,
+                            'Gemini streaming model failed; moving to fallback model=%s',
+                            (models or (model,))[model_index + 1],
                         )
-                        model = fallback_model
-                        retry_fallback = True
                         break
                     raise
-            if retry_fallback:
-                continue
-            break
+            if completed:
+                break
 
         raw = ''.join(output)
         if not raw.strip():

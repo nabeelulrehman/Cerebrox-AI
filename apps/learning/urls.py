@@ -18,5 +18,4 @@ urlpatterns = [
     path('notes/generate/stream/', views.notes_generate_stream, name='notes_generate_stream'),
     path('notes/<int:note_id>/', views.notes_view, name='notes_view'),
     path('notes/<int:note_id>/explain/', views.notes_explain, name='notes_explain'),
-    path('notes/<int:note_id>/ask/', views.notes_ask, name='notes_ask'),
 ]

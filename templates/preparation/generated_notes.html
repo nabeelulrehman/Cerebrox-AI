@@ -1,0 +1,20 @@
+{% extends "layouts/dashboard_layout.html" %}
+{% load static %}
+{% block title %}Exam Preparation Notes · {{ note.topic.name }}{% endblock %}
+{% block content %}
+<a href="{% url 'preparation:detail' preparation_plan.id %}" class="text-sm grad-text">← {{ preparation_plan.exam_name }}</a>
+<h1 class="font-display text-2xl font-bold mt-2 mb-1">{{ note.topic.name }}</h1>
+<p class="mb-6 text-sm" style="color:var(--txt-faint)">{{ note.study_level }} level · generated {{ note.created_at|date:"M d, Y H:i" }}{% if note.content.generated_by == "offline-fallback" %} · <span style="color:var(--warn)">offline fallback (no AI key configured)</span>{% endif %}</p>
+
+<div class="glass p-6 flex flex-col gap-6 max-w-3xl">
+  <div><h2 class="font-display font-semibold mb-2">Introduction</h2><p style="color:var(--txt-dim)">{{ note.content.introduction }}</p></div>
+  <div><h2 class="font-display font-semibold mb-2">Explanation</h2><p style="color:var(--txt-dim)">{{ note.content.explanation }}</p></div>
+  <div><h2 class="font-display font-semibold mb-2">Key terms</h2><ul class="list-disc list-inside" style="color:var(--txt-dim)">{% for term in note.content.key_terms %}<li>{{ term }}</li>{% endfor %}</ul></div>
+  <div><h2 class="font-display font-semibold mb-2">Examples</h2><ul class="list-disc list-inside" style="color:var(--txt-dim)">{% for ex in note.content.examples %}<li>{{ ex }}</li>{% endfor %}</ul></div>
+  <div><h2 class="font-display font-semibold mb-2">Important points</h2><ul class="list-disc list-inside" style="color:var(--txt-dim)">{% for point in note.content.important_points %}<li>{{ point }}</li>{% endfor %}</ul></div>
+  <div><h2 class="font-display font-semibold mb-2">Summary</h2><p style="color:var(--txt-dim)">{{ note.content.summary }}</p></div>
+  <div class="flex flex-col gap-6" data-additional-explanations>{% for detail in note.content.additional_explanations %}<section class="border-t pt-5"><h2 class="font-display font-semibold mb-2">More detail{% if not forloop.first %} {{ forloop.counter }}{% endif %}</h2><p style="color:var(--txt-dim);white-space:pre-line">{{ detail }}</p></section>{% endfor %}</div>
+  <form class="border-t pt-5 flex flex-col items-end gap-3" data-explain-more data-url="{% url 'learning:notes_explain' note.id %}">{% csrf_token %}<button type="submit" class="btn btn-primary">Explain More</button><span data-explain-status role="status" aria-live="polite" class="text-right" style="color:var(--txt-dim)"></span></form>
+</div>
+{% endblock %}
+{% block extra_js %}<script src="{% static 'js/notes_explain_more.js' %}" defer></script>{% endblock %}

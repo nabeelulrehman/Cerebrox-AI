@@ -31,6 +31,16 @@ class MarketError(Exception):
     pass
 
 
+def is_session_class_student(student, session):
+    return bool(student.is_student and session.classroom_id and session.access_type in (
+        TeachingSession.AccessType.CLASS_ONLY, TeachingSession.AccessType.CLASS_PUBLIC,
+    ) and Enrollment.objects.filter(
+        student=student, classroom_id=session.classroom_id,
+        status=Enrollment.Status.ACTIVE, classroom__is_active=True,
+        classroom__teacher_id=session.teacher_id,
+    ).exists())
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -539,19 +549,39 @@ def book_session(student, session):
     if not student.is_student:
         raise MarketError('Only students can book sessions.')
     session = TeachingSession.objects.select_for_update().get(pk=session.pk)
+    class_student = is_session_class_student(student, session)
+    public_access = session.access_type in (TeachingSession.AccessType.PUBLIC_ONLY, TeachingSession.AccessType.CLASS_PUBLIC)
+    if not class_student and not public_access:
+        raise MarketError('This session is only available to students enrolled in the teacher’s active classes.')
     sync_session_status(session)
-    if session.status != TeachingSession.Status.UPCOMING or session.starts_at <= timezone.now():
+    now = timezone.now()
+    class_session_open = class_student and session.status in (
+        TeachingSession.Status.UPCOMING, TeachingSession.Status.ONGOING,
+    ) and session.ends_at > now and (
+        session.status == TeachingSession.Status.ONGOING or session.starts_at > now
+    )
+    public_session_open = (
+        session.status == TeachingSession.Status.UPCOMING and session.starts_at > now
+    )
+    if not (class_session_open or public_session_open):
         raise MarketError('This session is not open for booking.')
     live = session.bookings.exclude(status=SessionBooking.Status.CANCELLED)
+    booking = SessionBooking.objects.filter(session=session, student=student).first()
+    if booking and booking.status == SessionBooking.Status.PENDING_PAYMENT and class_student:
+        booking.status = SessionBooking.Status.CONFIRMED
+        booking.save(update_fields=['status'])
+        Payment.objects.filter(
+            session=session, student=student, status=Payment.Status.PENDING,
+        ).update(status=Payment.Status.REJECTED, confirmed_at=now)
+        return booking
     if live.filter(student=student).exists():
         raise MarketError('You already booked this session.')
     if live.count() >= session.capacity:
         raise MarketError('This session is full.')
-    booking = SessionBooking.objects.filter(session=session, student=student).first()
     existing_payment = Payment.objects.filter(
         session=session, student=student, status=Payment.Status.CONFIRMED,
     ).exists()
-    if session.price > 0 and not existing_payment:
+    if not class_student and session.price > 0 and not existing_payment:
         status = SessionBooking.Status.PENDING_PAYMENT
     else:
         status = SessionBooking.Status.CONFIRMED

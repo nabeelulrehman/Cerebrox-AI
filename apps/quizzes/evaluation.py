@@ -26,9 +26,12 @@ def submit_quiz(quiz, answers_by_question_id: dict):
         from apps.preparation.models import LearningSession
         session = quiz.preparation_session
         if session.status != LearningSession.Status.COMPLETED:
+            if not session.started_at:
+                raise ValueError('A preparation task must be started before its quiz can complete it.')
             session.status = LearningSession.Status.COMPLETED
             session.completed_at = timezone.now()
-            session.save(update_fields=['status', 'completed_at'])
+            session.history = [*session.history, {'kind': 'completed', 'at': session.completed_at.isoformat(), 'source': 'quiz'}]
+            session.save(update_fields=['status', 'completed_at', 'history'])
 
     # Feed real completed practice attempts into any matching exam preparation plans.
     from apps.preparation.models import PreparationPlan, PreparationTopic

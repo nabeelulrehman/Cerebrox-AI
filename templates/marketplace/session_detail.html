@@ -18,7 +18,9 @@
     <div><p class="label">Time</p><p>{{ session.starts_at|date:"g:i A" }}–{{ session.ends_at|date:"g:i A" }} ({{ session.duration_minutes }} minutes)</p></div>
     <div><p class="label">Classroom</p><p>LiveKit video classroom</p></div>
     <div><p class="label">Maximum students</p><p>{{ session.capacity }}</p></div>
-    <div><p class="label">Price</p><p>{% if session.price %}{{ session.price }}{% else %}Free{% endif %}</p></div>
+    <div><p class="label">Access</p><p>{{ session.get_access_type_display }}</p></div>
+    {% if session.classroom %}{% if can_manage or class_student %}<div><p class="label">Class</p><p>{{ session.classroom.name }}</p></div>{% endif %}{% endif %}
+    {% if session.access_type == 'class_only' %}<div><p class="label">Class access</p><p>Free for students enrolled in the teacher’s active classes</p></div>{% elif session.access_type == 'class_public' %}<div><p class="label">Public booking price</p><p>PKR {{ session.price }} · enrolled class students join free</p></div>{% else %}<div><p class="label">Booking price</p><p>PKR {{ session.price }}</p></div>{% endif %}
   </div>
   <div class="mt-5">
     <h2 class="font-display text-lg font-semibold">Class description</h2>
@@ -44,7 +46,7 @@
         <form method="post" action="{% url 'market:session_cancel' session.id %}" onsubmit="return confirm('Cancel this session and notify booked students?');">{% csrf_token %}<button class="btn btn-ghost">Cancel Session</button></form>
       {% endif %}
     {% elif can_book %}
-      <form method="post" action="{% url 'market:session_book' session.id %}">{% csrf_token %}<button class="btn btn-primary">Book this class</button></form>
+      <form method="post" action="{% url 'market:session_book' session.id %}">{% csrf_token %}<button class="btn btn-primary">{% if class_student %}Join this class for free{% else %}Book for PKR {{ session.price }}{% endif %}</button></form>
     {% elif can_cancel_booking %}
       <span class="pill">{{ booking.get_status_display }}</span>
       <form method="post" action="{% url 'market:session_booking_cancel' session.id %}">{% csrf_token %}<button class="btn btn-ghost">Cancel booking</button></form>

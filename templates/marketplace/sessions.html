@@ -13,7 +13,7 @@
           {{ s.teacher.get_full_name|default:s.teacher.username }} · {{ s.starts_at|date:"M j, Y" }} ·
           {{ s.starts_at|date:"g:i A" }}–{{ s.ends_at|date:"g:i A" }} · {{ s.duration_minutes }} min
         </p>
-        <p class="text-xs mt-1" style="color:var(--txt-faint)">LiveKit classroom · {% if s.price %}{{ s.price }}{% else %}Free{% endif %}</p>
+        <p class="text-xs mt-1" style="color:var(--txt-faint)">LiveKit classroom · {{ s.get_access_type_display }}{% if s.access_type == 'class_only' %} · Free for enrolled students{% elif s.access_type == 'class_public' %} · Class students free; public booking PKR {{ s.price }}{% else %} · Booking PKR {{ s.price }}{% endif %}</p>
         {% if s.student_booking and s.student_booking.status == 'confirmed' and s.status == 'ongoing' %}
           <a class="btn btn-primary mt-3" href="{% url 'market:session_classroom' s.id %}">Join Class</a>
         {% endif %}

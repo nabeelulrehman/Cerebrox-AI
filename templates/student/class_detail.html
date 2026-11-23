@@ -5,6 +5,21 @@
 <h1 class="font-display text-2xl font-bold mt-2">{{ c.name }}</h1>
 <p class="text-sm mb-5" style="color:var(--txt-dim)">Teacher: {{ c.teacher.get_full_name|default:c.teacher.username }} &middot; {{ c.subject }}</p>
 <div class="grid lg:grid-cols-2 gap-6">
+  <div class="glass p-5 lg:col-span-2"><h2 class="font-display font-semibold mb-3">Live online classes</h2>
+    <div class="grid md:grid-cols-2 gap-3">
+      {% for s in live_sessions %}<article class="rounded-xl p-4" style="border:1px solid var(--line)">
+        <div class="flex items-start justify-between gap-3"><div><a class="font-semibold grad-text" href="{% url 'market:session_detail' s.id %}">{{ s.title }}</a>
+          <p class="text-sm mt-1" style="color:var(--txt-dim)">{{ s.starts_at|date:"M j, Y" }} · {{ s.starts_at|date:"g:i A" }}–{{ s.ends_at|date:"g:i A" }}</p></div>
+          <span class="pill">{% if s.status == 'ongoing' %}Live Now{% elif s.status == 'upcoming' %}Upcoming{% elif s.status == 'completed' %}Completed{% else %}{{ s.get_status_display }}{% endif %}</span></div>
+        {% if s.status == 'upcoming' or s.status == 'ongoing' %}
+          {% if s.student_booking and s.student_booking.status == 'confirmed' %}<a class="btn btn-primary mt-3" href="{% url 'market:session_join' s.id %}">Join Class</a>
+          {% elif not s.student_booking or s.student_booking.status == 'cancelled' %}<form method="post" action="{% url 'market:session_book' s.id %}" class="mt-3">{% csrf_token %}<button class="btn btn-primary">Join Class</button></form>
+          {% elif s.student_booking.status == 'pending_payment' %}<form method="post" action="{% url 'market:session_book' s.id %}" class="mt-3">{% csrf_token %}<button class="btn btn-primary">Join Class</button></form>
+          {% else %}<span class="pill mt-3">{{ s.student_booking.get_status_display }}</span>{% endif %}
+        {% endif %}
+      </article>{% empty %}<p class="text-sm" style="color:var(--txt-faint)">No live sessions are scheduled for this class.</p>{% endfor %}
+    </div>
+  </div>
   <div class="glass p-5"><h2 class="font-display font-semibold mb-3">Class quizzes <span class="pill">teacher-assigned</span></h2>
     {% for q in class_quizzes %}<a href="{% url 'class_quizzes:entry' q.share_token %}" class="flex justify-between py-2 border-b text-sm" style="border-color:var(--line)"><span>{{ q.title }}</span><span class="grad-text">Open →</span></a>
     {% empty %}<p class="text-sm" style="color:var(--txt-faint)">No quizzes published.</p>{% endfor %}</div>

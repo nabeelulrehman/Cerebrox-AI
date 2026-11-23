@@ -118,10 +118,11 @@ class SessionForm(StyledFormMixin, forms.ModelForm):
     class Meta:
         model = TeachingSession
         fields = (
-            'title', 'subject', 'description', 'price', 'capacity', 'instructions',
+            'title', 'subject', 'description', 'access_type', 'classroom', 'price', 'capacity', 'instructions',
         )
 
     def __init__(self, *args, **kwargs):
+        teacher = kwargs.pop('teacher', None)
         super().__init__(*args, **kwargs)
         if self.instance.pk:
             local_start = timezone.localtime(self.instance.starts_at)
@@ -131,6 +132,21 @@ class SessionForm(StyledFormMixin, forms.ModelForm):
             self.fields['end_time'].initial = local_end.time().replace(tzinfo=None)
         self.fields['capacity'].label = 'Maximum students'
         self.fields['capacity'].min_value = 1
+        self.fields['access_type'].label = 'Session access type'
+        self.fields['classroom'].label = 'Select class'
+        self.fields['classroom'].help_text = 'Only students actively enrolled in this class receive free access.'
+        if teacher:
+            class_filter = Q(teacher=teacher, is_active=True)
+            if self.instance.classroom_id:
+                class_filter |= Q(pk=self.instance.classroom_id, teacher=teacher)
+            self.fields['classroom'].queryset = Classroom.objects.filter(class_filter)
+        elif self.instance.pk:
+            self.fields['classroom'].queryset = Classroom.objects.filter(
+                teacher=self.instance.teacher, is_active=True,
+            )
+        self.fields['classroom'].required = False
+        self.fields['price'].label = 'Public booking price (PKR)'
+        self.fields['price'].required = False
 
     def clean(self):
         cleaned_data = super().clean()
@@ -150,6 +166,18 @@ class SessionForm(StyledFormMixin, forms.ModelForm):
                 self.cleaned_start = aware_start
                 self.cleaned_duration = int((aware_end - aware_start).total_seconds() // 60)
         capacity = cleaned_data.get('capacity')
+        access_type = cleaned_data.get('access_type')
+        classroom = cleaned_data.get('classroom')
+        if access_type in (TeachingSession.AccessType.CLASS_ONLY, TeachingSession.AccessType.CLASS_PUBLIC) and not classroom:
+            self.add_error('classroom', 'Choose the class this session belongs to.')
+        elif access_type == TeachingSession.AccessType.PUBLIC_ONLY:
+            cleaned_data['classroom'] = None
+        price = cleaned_data.get('price')
+        if access_type in (TeachingSession.AccessType.PUBLIC_ONLY, TeachingSession.AccessType.CLASS_PUBLIC):
+            if not price or price <= 0:
+                self.add_error('price', 'Set a public booking price above PKR 0 when public access is enabled.')
+        elif access_type == TeachingSession.AccessType.CLASS_ONLY:
+            cleaned_data['price'] = 0
         if capacity is not None and self.instance.pk:
             active_bookings = self.instance.bookings.exclude(status='cancelled').count()
             if capacity < active_bookings:

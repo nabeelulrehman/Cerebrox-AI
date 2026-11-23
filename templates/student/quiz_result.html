@@ -31,6 +31,6 @@
   </section>
   {% endif %}
 
-  <div class="flex flex-wrap gap-3 mt-6"><a href="{% url 'analytics:performance' %}" class="btn btn-ghost">View performance</a><a href="{% url 'learning:topic_detail' quiz.topic.id %}" class="btn btn-primary">Back to topic</a></div>
+  {% if not quiz.preparation_plan_id %}<div class="flex flex-wrap gap-3 mt-6"><a href="{% url 'analytics:performance' %}" class="btn btn-ghost">View performance</a><a href="{% url 'learning:topic_detail' quiz.topic.id %}" class="btn btn-primary">Back to topic</a></div>{% endif %}
 </div>
 {% endblock %}

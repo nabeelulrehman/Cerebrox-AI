@@ -1,0 +1,16 @@
+{% extends "layouts/dashboard_layout.html" %}
+{% block title %}AI Notes · {{ topic.name }}{% endblock %}
+{% block content %}
+<a href="{% url 'preparation:detail' plan.id %}" class="text-sm grad-text">← Back to Exam Preparation</a>
+<h1 class="font-display text-2xl font-bold mt-3 mb-1">Generate AI notes</h1>
+<p class="mb-1" style="color:var(--txt-dim)">{{ plan.exam_name }} · {{ topic.course.name }} → {{ topic.name }}</p>
+<p class="mb-6 text-sm" style="color:var(--txt-faint)">Notes will be pitched to your study level: <strong>{{ user.effective_study_level }}</strong>.</p>
+<div class="glass p-6 max-w-lg">
+  {% if error %}<p class="alert alert-error mb-4" role="alert">AI Error: {{ error }}</p>{% endif %}
+  <form method="post" class="flex flex-col gap-4">
+    {% csrf_token %}
+    <div><label class="label" for="id_length">Preferred length</label>{{ form.length }}{% for error in form.length.errors %}<p class="text-sm mt-1" style="color:var(--bad)">{{ error }}</p>{% endfor %}</div>
+    <button class="btn btn-primary w-max mt-2" type="submit">✨ Generate notes</button>
+  </form>
+</div>
+{% endblock %}

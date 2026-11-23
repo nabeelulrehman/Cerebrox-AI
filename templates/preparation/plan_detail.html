@@ -20,28 +20,37 @@
 
   <div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_19rem]">
     <section class="min-w-0" aria-labelledby="schedule-heading">
-      <div class="flex flex-wrap items-center justify-between gap-3 mb-3"><div><h2 id="schedule-heading" class="font-display text-xl font-semibold">Learning schedule</h2><p class="text-sm" style="color:var(--txt-dim)">Times shown in {{ plan.timezone }}. Completed activities stay in place.</p></div>
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-3"><div><h2 id="schedule-heading" class="font-display text-xl font-semibold">Learning workflow</h2><p class="text-sm" style="color:var(--txt-dim)">Times shown in {{ plan.timezone }}. Start tasks early or follow your schedule.</p></div>
         <details class="relative"><summary class="btn btn-ghost cursor-pointer">Availability</summary><form class="glass absolute right-0 z-10 mt-2 w-[min(90vw,24rem)] p-4 space-y-3" method="post" enctype="multipart/form-data" action="{% url 'preparation:availability' plan.id %}">{% csrf_token %}{% for field in availability_form %}<div><label class="block text-sm font-medium" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{{ field.errors }}</div>{% endfor %}<button class="btn btn-primary w-full">Save availability</button></form></details>
       </div>
       <div class="space-y-3">
-        {% for session in sessions %}
-        <article class="glass p-4 sm:p-5">
-          <div class="flex flex-wrap items-start justify-between gap-3"><div class="min-w-0"><p class="text-xs uppercase tracking-wide" style="color:var(--txt-dim)">{{ session.get_kind_display }}{% if session.topic %} · {{ session.topic.name }}{% endif %}</p><h3 class="font-semibold text-lg mt-1">{{ session.title }}</h3></div><span class="pill">{{ session.get_status_display }}</span></div>
-          <p class="text-sm mt-2">{{ session.start_display }}–{{ session.end_display }} · {{ session.duration_minutes }} minutes</p>
-          {% if session.objectives %}<p class="text-sm mt-2" style="color:var(--txt-dim)">{{ session.objectives }}</p>{% endif %}
-          {% if session.material %}<details class="mt-3"><summary class="cursor-pointer text-sm font-medium">Open study material</summary><div class="whitespace-pre-line text-sm mt-2">{{ session.material }}</div></details>{% endif %}
-          {% if session.topic and session.topic.learning_topic %}<div class="flex flex-wrap gap-2 mt-4">
-            {% if session.latest_note %}<a class="btn btn-ghost" href="{% url 'learning:notes_view' session.latest_note.id %}">Revisit AI notes</a>{% else %}<a class="btn btn-ghost" href="{% url 'learning:notes_generate' session.topic.learning_topic.id %}">Generate AI notes</a>{% endif %}
-            {% if not session.topic.completed_at %}<form method="post" action="{% url 'preparation:complete_session' plan.id session.id %}">{% csrf_token %}<button class="btn btn-primary">Mark as learned</button></form>{% else %}<form method="post" class="js-quiz-generation" action="{% url 'preparation:practice_quiz' plan.id session.id %}">{% csrf_token %}<button class="btn btn-primary" data-loading-label="Generating quiz...">Practice quiz</button></form>{% endif %}
+        <div class="glass p-4 sm:p-5" aria-label="Task progress">
+          <div class="flex justify-between gap-3 text-sm"><strong>{{ completed_count }} of {{ total_sessions }} completed</strong><span>{{ readiness.coverage }}%</span></div>
+          <div class="h-2 rounded-full mt-3" role="progressbar" aria-valuenow="{{ completed_count }}" aria-valuemin="0" aria-valuemax="{{ total_sessions }}" aria-label="Task completion progress" style="background:var(--fill)"><div class="h-2 rounded-full" style="width:{% if total_sessions %}{% widthratio completed_count total_sessions 100 %}{% else %}0{% endif %}%;background:var(--grad)"></div></div>
+        </div>
+        {% if current_session %}
+        <article class="glass p-5 sm:p-6">
+          <div class="flex flex-wrap items-start justify-between gap-3"><div class="min-w-0"><p class="text-xs uppercase tracking-wide" style="color:var(--txt-dim)">Current task · {{ current_session.get_kind_display }}{% if current_session.topic %} · {{ current_session.topic.name }}{% endif %}</p><h3 class="font-semibold text-xl mt-1">{{ current_session.title }}</h3></div><span class="pill">{% if current_session.started_at %}In progress{% else %}Pending{% endif %}</span></div>
+          <p class="text-sm mt-3">{{ current_session.start_display }}–{{ current_session.end_display }} · {{ current_session.duration_minutes }} minutes</p>
+          {% if current_session.objectives %}<p class="text-sm mt-2" style="color:var(--txt-dim)">{{ current_session.objectives }}</p>{% endif %}
+          {% if current_session.material %}<details class="mt-3"><summary class="cursor-pointer text-sm font-medium">Open study material</summary><div class="whitespace-pre-line text-sm mt-2">{{ current_session.material }}</div></details>{% endif %}
+          {% if current_session.topic and current_session.topic.learning_topic %}<div class="flex flex-wrap gap-2 mt-4">
+            {% if current_session.latest_note %}<a class="btn btn-ghost" href="{% url 'preparation:notes_view' plan.id current_session.id current_session.latest_note.id %}">Revisit AI notes</a>{% else %}<a class="btn btn-ghost" href="{% url 'preparation:notes_generate' plan.id current_session.id %}">Generate AI notes</a>{% endif %}
+            {% if current_session.started_at %}<form method="post" class="js-quiz-generation" action="{% url 'preparation:practice_quiz' plan.id current_session.id %}">{% csrf_token %}<button class="btn btn-ghost" data-loading-label="Generating quiz...">Practice quiz</button></form>{% endif %}
           </div>{% endif %}
+          <div class="flex flex-wrap gap-2 mt-5">
+            {% if current_session.started_at %}<form method="post" action="{% url 'preparation:complete_session' plan.id current_session.id %}">{% csrf_token %}<button class="btn btn-primary">Mark as Completed</button></form>{% else %}<form method="post" action="{% url 'preparation:start_session' plan.id current_session.id %}">{% csrf_token %}<button class="btn btn-primary">Start Now</button></form>{% endif %}
+          </div>
         </article>
-        {% empty %}<div class="glass p-6 text-center"><p>No learning activities are scheduled yet.</p></div>{% endfor %}
+        {% else %}<div class="glass p-6 text-center"><p class="font-semibold">All scheduled tasks are complete.</p><p class="text-sm mt-1" style="color:var(--txt-dim)">Your learning history and quiz results remain available below.</p></div>{% endif %}
+        {% if completed_sessions %}<details class="glass p-4"><summary class="cursor-pointer font-semibold">Completed task history ({{ completed_count }})</summary><div class="mt-3 divide-y" style="border-color:var(--line)">{% for session in completed_sessions %}<div class="py-3"><p class="text-xs" style="color:var(--txt-dim)">{{ session.get_kind_display }} · {{ session.start_display }}</p><p class="font-medium">{{ session.title }}</p>{% if session.completed_at %}<p class="text-xs mt-1" style="color:var(--txt-dim)">Completed {{ session.completed_at|date:"M j, Y g:i A" }}</p>{% endif %}{% if session.latest_note %}<a class="btn btn-ghost mt-2" href="{% url 'preparation:notes_view' plan.id session.id session.latest_note.id %}">Revisit AI notes</a>{% endif %}</div>{% endfor %}</div></details>{% endif %}
+        {% if not sessions %}<div class="glass p-6 text-center"><p>No learning activities are scheduled yet.</p></div>{% endif %}
       </div>
     </section>
 
     <aside class="space-y-4">
       <section class="glass p-4"><h2 class="font-display text-lg font-semibold">Topic performance</h2><div class="mt-2 divide-y" style="border-color:var(--line)">{% for row in readiness.topic_scores %}<div class="py-3"><div class="flex justify-between gap-2"><strong class="text-sm">{{ row.topic.name }}</strong><span class="text-sm">{% if row.evidence %}{{ row.score }}%{% else %}—{% endif %}</span></div><p class="text-xs mt-1" style="color:var(--txt-dim)">{% if row.evidence %}{{ row.evidence }} quiz result(s){% else %}No quiz result yet{% endif %}{% if row.completed %} · learned{% endif %}</p></div>{% empty %}<p class="text-sm py-3">No topics yet.</p>{% endfor %}</div></section>
-      <section class="glass p-4"><h2 class="font-display text-lg font-semibold">Recent practice</h2><div class="mt-2 space-y-3">{% for quiz in recent_quizzes %}<a class="block border-t pt-3" style="border-color:var(--line)" href="{% url 'quizzes:result' quiz.id %}"><span class="flex justify-between gap-2 text-sm"><strong>{{ quiz.topic.name }}</strong><strong>{{ quiz.percentage }}%</strong></span><span class="text-xs" style="color:var(--txt-dim)">{{ quiz.created_at|date:"M j, Y" }} · {{ quiz.score }}/{{ quiz.total_questions }}</span></a>{% empty %}<p class="text-sm mt-2" style="color:var(--txt-dim)">Your quiz attempts will appear here.</p>{% endfor %}</div></section>
+      <section class="glass p-4"><h2 class="font-display text-lg font-semibold">Recent practice</h2><div class="mt-2 space-y-3">{% for quiz in recent_quizzes %}<a class="block border-t pt-3" style="border-color:var(--line)" href="{% if quiz.preparation_plan_id %}{% url 'preparation:quiz_result' quiz.id %}{% else %}{% url 'quizzes:result' quiz.id %}{% endif %}"><span class="flex justify-between gap-2 text-sm"><strong>{{ quiz.topic.name }}</strong><strong>{{ quiz.percentage }}%</strong></span><span class="text-xs" style="color:var(--txt-dim)">{{ quiz.created_at|date:"M j, Y" }} · {{ quiz.score }}/{{ quiz.total_questions }}</span></a>{% empty %}<p class="text-sm mt-2" style="color:var(--txt-dim)">Your quiz attempts will appear here.</p>{% endfor %}</div></section>
     </aside>
   </div>
   <p class="text-xs" style="color:var(--txt-dim)">Readiness is an estimate based on assessment performance and activity coverage. It does not guarantee an exam result.</p>

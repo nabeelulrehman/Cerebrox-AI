@@ -8,7 +8,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
-from .models import Course, Topic, AINote, AINoteConversation
+from .models import Course, Topic, AINote
 from .forms import CourseForm, TopicForm, NotesGenerateForm, NotesSectionForm
 from apps.ai_engine.notes_generator import (
     NotesGenerationInProgress,
@@ -16,7 +16,7 @@ from apps.ai_engine.notes_generator import (
     generate_notes_stream,
     notes_generation_lock,
 )
-from apps.ai_engine.gemini_client import AIUnavailableError
+from apps.ai_engine.gemini_client import AIUnavailableError, user_facing_error_message
 from apps.accounts.permissions import student_required
 
 logger = logging.getLogger(__name__)
@@ -177,7 +177,7 @@ def notes_dashboard(request):
             return render(request, 'student/notes_section.html', {'form': form, 'courses': Course.objects.filter(student=request.user)})
         except AIUnavailableError as exc:
             messages.error(request, 'Unable to generate AI notes right now. Please check the AI configuration and try again.')
-            return render(request, 'student/notes_section.html', {'form': form, 'courses': Course.objects.filter(student=request.user), 'error': str(exc)})
+            return render(request, 'student/notes_section.html', {'form': form, 'courses': Course.objects.filter(student=request.user), 'error': user_facing_error_message(exc)})
         messages.success(request, 'Notes generated and saved.')
         return redirect('learning:notes_view', note_id=note.id)
     return render(request, 'student/notes_section.html', {'form': form, 'courses': Course.objects.filter(student=request.user)})
@@ -204,7 +204,7 @@ def notes_generate(request, topic_id):
                 return render(request, 'student/notes_generator.html', {'topic': topic, 'form': form})
             except AIUnavailableError as exc:
                 messages.error(request, 'Unable to generate AI notes right now. Please check the AI configuration and try again.')
-                return render(request, 'student/notes_generator.html', {'topic': topic, 'form': form, 'error': str(exc)})
+                return render(request, 'student/notes_generator.html', {'topic': topic, 'form': form, 'error': user_facing_error_message(exc)})
             messages.success(request, 'Notes generated.')
             return redirect('learning:notes_view', note_id=note.id)
     else:
@@ -272,9 +272,9 @@ def notes_generate_stream(request):
                     url=reverse('learning:notes_view', kwargs={'note_id': note.pk}),
                 )
         except NotesGenerationInProgress as exc:
-            yield _notes_event('error', message=str(exc))
+            yield _notes_event('error', message=user_facing_error_message(exc))
         except AIUnavailableError as exc:
-            yield _notes_event('error', message=str(exc))
+            yield _notes_event('error', message=user_facing_error_message(exc))
         except Exception:
             logger.exception('AI notes streaming failed: topic_id=%s', topic.pk)
             yield _notes_event(
@@ -294,8 +294,7 @@ def notes_generate_stream(request):
 @student_required
 def notes_view(request, note_id):
     note = get_object_or_404(AINote, pk=note_id, student=request.user)
-    conversation, _ = AINoteConversation.objects.get_or_create(student=request.user, note=note)
-    return render(request, 'student/generated_notes.html', {'note': note, 'conversation': conversation})
+    return render(request, 'student/generated_notes.html', {'note': note})
 
 
 @student_required
@@ -304,46 +303,37 @@ def notes_explain(request, note_id):
     note = get_object_or_404(AINote.objects.select_related('topic__course'), pk=note_id, student=request.user)
     try:
         from apps.ai_engine.gemini_client import chat_json
-        section = (request.POST.get('section') or 'whole topic').strip()[:120]
-        level = request.POST.get('level', 'beginner')
-        if level not in {'beginner', 'advanced'}:
-            return JsonResponse({'error': 'Choose beginner or advanced.'}, status=400)
-        payload = chat_json(
-            'You are a careful tutor. Return JSON with one string field named explanation. Include clear steps, examples and applications.',
-            f"Explain {section!r} from {note.topic.name!r} for a {level} learner. Existing notes context: "
-            f"{json.dumps(note.content, ensure_ascii=False)[:7000]}", max_output_tokens=1400,
-        )
-        explanation = payload.get('explanation')
-        if not isinstance(explanation, str) or not explanation.strip():
-            raise AIUnavailableError('The tutor returned an empty explanation.')
-        return JsonResponse({'explanation': explanation.strip()})
-    except AIUnavailableError as exc:
-        return JsonResponse({'error': str(exc)}, status=503)
+        request_id = (request.POST.get('request_id') or '').strip()[:64]
+        if not request_id:
+            return JsonResponse({'error': 'Refresh the page and try again.'}, status=400)
+        with notes_generation_lock(request.user.pk, note.topic_id, f'explain-{note.pk}'):
+            note.refresh_from_db(fields=['content'])
+            request_results = note.content.get('additional_explanation_requests', {})
+            if request_id in request_results:
+                return JsonResponse({'explanation': request_results[request_id]})
 
-
-@student_required
-@require_POST
-def notes_ask(request, note_id):
-    note = get_object_or_404(AINote.objects.select_related('topic__course'), pk=note_id, student=request.user)
-    question = (request.POST.get('question') or '').strip()
-    if not question or len(question) > 1200:
-        return JsonResponse({'error': 'Enter a question up to 1,200 characters.'}, status=400)
-    conversation, _ = AINoteConversation.objects.get_or_create(student=request.user, note=note)
-    history = conversation.messages[-12:]
-    try:
-        from apps.ai_engine.gemini_client import chat_json
-        payload = chat_json(
-            'You are a helpful tutor. Answer using the supplied topic and notes. Be concise, explain steps, and say when a question is outside the topic. Return JSON with a string field answer.',
-            f"Topic: {note.topic.name}\nNotes: {json.dumps(note.content, ensure_ascii=False)[:5000]}\n"
-            f"Recent conversation: {json.dumps(history, ensure_ascii=False)}\nStudent question: {question}",
-            max_output_tokens=1200,
-        )
-        answer = payload.get('answer')
-        if not isinstance(answer, str) or not answer.strip():
-            raise AIUnavailableError('The tutor returned an empty answer.')
-        conversation.messages = (history + [{'role': 'user', 'content': question},
-                                             {'role': 'assistant', 'content': answer.strip()}])[-20:]
-        conversation.save(update_fields=['messages', 'updated_at'])
-        return JsonResponse({'answer': answer.strip(), 'messages': conversation.messages})
+            previous = note.content.get('additional_explanations', [])
+            payload = chat_json(
+                'You are a clear, thorough teacher. Return JSON with one string field named explanation. '
+                'Explain the whole topic with connected detail, step-by-step reasoning, useful examples, '
+                'and applications. Do not repeat the existing notes or previous additional explanations; '
+                'add deeper context and new useful details.',
+                f"Topic: {note.topic.name}\nCourse: {note.topic.course.name}\n"
+                f"Existing notes: {json.dumps(note.content, ensure_ascii=False)[:7000]}\n"
+                f"Previous additional explanations: {json.dumps(previous, ensure_ascii=False)[:4000]}",
+                max_output_tokens=2200,
+            )
+            explanation = payload.get('explanation')
+            if not isinstance(explanation, str) or not explanation.strip():
+                raise AIUnavailableError('Gemini returned an empty topic explanation.')
+            explanation = explanation.strip()
+            note.content['additional_explanations'] = [*previous, explanation]
+            request_results[request_id] = explanation
+            # Bound the idempotency map while retaining the full explanation history.
+            note.content['additional_explanation_requests'] = dict(list(request_results.items())[-20:])
+            note.save(update_fields=['content'])
+            return JsonResponse({'explanation': explanation})
+    except NotesGenerationInProgress:
+        return JsonResponse({'error': 'An explanation is already being generated. Please wait.'}, status=409)
     except AIUnavailableError as exc:
-        return JsonResponse({'error': str(exc)}, status=503)
+        return JsonResponse({'error': user_facing_error_message(exc)}, status=503)

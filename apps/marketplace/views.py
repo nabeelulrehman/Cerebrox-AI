@@ -18,6 +18,7 @@ from django.views.decorators.http import require_GET, require_POST
 from botocore.exceptions import ClientError
 
 from apps.accounts.permissions import admin_required, verified_teacher_required
+from apps.classrooms.models import Enrollment
 from apps.teachers.models import TeacherProfile
 from . import services
 from .forms import (
@@ -434,7 +435,7 @@ def teacher_sessions(request):
             TeachingSession.RecordingStatus.RECORDING,
         ):
             services.refresh_livekit_recording_state(session)
-    form = SessionForm(request.POST or None)
+    form = SessionForm(request.POST or None, teacher=request.user)
     if request.method == 'POST' and form.is_valid():
         s = form.save(commit=False)
         s.teacher = request.user
@@ -471,6 +472,11 @@ def sessions_list(request):
     ).filter(
         Q(teacher__teacher_profile__verification_status=TeacherProfile.Status.APPROVED)
         | Q(bookings__student=request.user),
+    ).filter(
+        Q(access_type__in=(TeachingSession.AccessType.PUBLIC_ONLY, TeachingSession.AccessType.CLASS_PUBLIC))
+        | Q(classroom__enrollments__student=request.user,
+            classroom__enrollments__status=Enrollment.Status.ACTIVE,
+            classroom__is_active=True),
     ).select_related('teacher', 'teacher__teacher_profile').distinct().order_by('starts_at')
     sessions = list(sessions)
     for session in sessions:
@@ -500,6 +506,9 @@ def session_detail(request, session_id):
     booking = SessionBooking.objects.filter(session=session, student=request.user).first()
     if not (request.user.is_teacher and session.teacher_id == request.user.pk):
         _student(request)
+        class_student = services.is_session_class_student(request.user, session)
+        if session.access_type == TeachingSession.AccessType.CLASS_ONLY and not class_student:
+            raise Http404
         if (
             not hasattr(session.teacher, 'teacher_profile')
             or session.teacher.teacher_profile.verification_status != TeacherProfile.Status.APPROVED
@@ -523,11 +532,19 @@ def session_detail(request, session_id):
         attendance = session.attendance_records.select_related('student').all()
     elif booking:
         attendance = SessionAttendance.objects.filter(session=session, student=request.user).first()
+    class_student = bool(request.user.is_student and services.is_session_class_student(request.user, session))
+    class_booking_upgrade = bool(
+        class_student and booking and booking.status == SessionBooking.Status.PENDING_PAYMENT
+    )
     can_book = (
         request.user.is_student
-        and not active_booking
-        and session.status == TeachingSession.Status.UPCOMING
-        and session.starts_at > timezone.now()
+        and (not active_booking or class_booking_upgrade)
+        and (session.status == TeachingSession.Status.UPCOMING and session.starts_at > timezone.now()
+             or services.is_session_class_student(request.user, session)
+             and session.status == TeachingSession.Status.ONGOING)
+        and (services.is_session_class_student(request.user, session) or session.access_type in (
+            TeachingSession.AccessType.PUBLIC_ONLY, TeachingSession.AccessType.CLASS_PUBLIC,
+        ))
         and session.bookings.exclude(status=SessionBooking.Status.CANCELLED).count() < session.capacity
     )
     can_cancel_booking = (
@@ -545,8 +562,12 @@ def session_detail(request, session_id):
         'booking': booking,
         'active_booking': active_booking,
         'can_manage': can_manage,
+        'class_student': class_student,
         'can_view_recording': can_manage or bool(
             request.user.is_student and booking and booking.status == SessionBooking.Status.CONFIRMED
+            and (class_student or session.price <= 0 or Payment.objects.filter(
+                session=session, student=request.user, status=Payment.Status.CONFIRMED,
+            ).exists())
         ),
         'bookings': bookings,
         'attendance': attendance,
@@ -556,7 +577,9 @@ def session_detail(request, session_id):
             request.user.is_student
             and active_booking
             and booking.status == SessionBooking.Status.CONFIRMED
-            and session.status == TeachingSession.Status.ONGOING
+            and (session.status == TeachingSession.Status.ONGOING or (
+                class_student and session.status == TeachingSession.Status.UPCOMING
+            ))
         ),
         'recording_ready': services.livekit_recording_ready(),
         'reminder_due': reminder_due,
@@ -565,14 +588,32 @@ def session_detail(request, session_id):
 
 def _classroom_role(request, session):
     services.sync_session_status(session)
-    if session.status != TeachingSession.Status.ONGOING:
-        raise MarketError('The teacher has not started this class, or it has already ended.')
     if request.user.is_teacher and session.teacher_id == request.user.pk:
+        if session.status != TeachingSession.Status.ONGOING:
+            raise MarketError('The teacher has not started this class, or it has already ended.')
         return True
+    class_student = request.user.is_student and services.is_session_class_student(request.user, session)
+    if session.status != TeachingSession.Status.ONGOING and not (
+        class_student and session.status == TeachingSession.Status.UPCOMING
+        and session.starts_at > timezone.now()
+    ):
+        raise MarketError('This class is not currently open.')
+    if (request.user.is_student
+            and session.access_type == TeachingSession.AccessType.CLASS_ONLY
+            and not services.is_session_class_student(request.user, session)):
+        raise PermissionDenied
+    if class_student:
+        # Enrollment grants free class access, but still requires an ordinary
+        # confirmed booking so capacity and attendance remain accounted for.
+        if session.bookings.filter(student=request.user, status=SessionBooking.Status.CONFIRMED).exists():
+            return False
     if request.user.is_student and session.bookings.filter(
         student=request.user, status=SessionBooking.Status.CONFIRMED,
     ).exists():
-        return False
+        if session.price <= 0 or Payment.objects.filter(
+            session=session, student=request.user, status=Payment.Status.CONFIRMED,
+        ).exists():
+            return False
     raise PermissionDenied
 
 
@@ -687,11 +728,14 @@ def session_recording_stop(request, session_id):
 @login_required
 def session_recording_play(request, session_id):
     session = get_object_or_404(TeachingSession, pk=session_id)
+    class_access = services.is_session_class_student(request.user, session)
     if not (
         request.user.is_teacher and session.teacher_id == request.user.pk
-        or request.user.is_student and session.bookings.filter(
+        or request.user.is_student and (class_access or session.access_type != TeachingSession.AccessType.CLASS_ONLY) and session.bookings.filter(
             student=request.user, status=SessionBooking.Status.CONFIRMED,
-        ).exists()
+        ).exists() and (session.price <= 0 or Payment.objects.filter(
+            session=session, student=request.user, status=Payment.Status.CONFIRMED,
+        ).exists())
     ):
         raise PermissionDenied
     try:
@@ -709,7 +753,7 @@ def session_edit(request, session_id):
         messages.error(request, 'Only upcoming sessions can be edited or rescheduled.')
         return redirect('market:session_detail', session_id=session.pk)
     original_schedule = (session.starts_at, session.duration_minutes)
-    form = SessionForm(request.POST or None, instance=session)
+    form = SessionForm(request.POST or None, instance=session, teacher=request.user)
     if request.method == 'POST' and form.is_valid():
         session = form.save(commit=False)
         session.save()
@@ -800,6 +844,8 @@ def session_book(request, session_id):
         services.notify_booking(b)
         messages.success(request, 'Booked.' if b.status == SessionBooking.Status.CONFIRMED else
                          'Booking held. It is confirmed once your payment is verified by an administrator.')
+        if b.status == SessionBooking.Status.CONFIRMED and services.is_session_class_student(request.user, s):
+            return redirect('market:session_classroom', session_id=s.pk)
         return redirect('market:session_detail', session_id=s.pk)
     except MarketError as exc:
         messages.error(request, str(exc))

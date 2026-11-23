@@ -169,6 +169,11 @@ class GuidanceMessage(models.Model):
 
 
 class TeachingSession(models.Model):
+    class AccessType(models.TextChoices):
+        CLASS_ONLY = 'class_only', 'Class Only'
+        PUBLIC_ONLY = 'public_only', 'Public Only'
+        CLASS_PUBLIC = 'class_public', 'Class + Public'
+
     class Platform(models.TextChoices):
         ZOOM = 'zoom', 'Zoom'
         GOOGLE_MEET = 'google_meet', 'Google Meet'
@@ -194,6 +199,11 @@ class TeachingSession(models.Model):
     title = models.CharField(max_length=160)
     subject = models.CharField(max_length=160, blank=True, default='')
     description = models.TextField(blank=True)
+    access_type = models.CharField(max_length=16, choices=AccessType.choices, default=AccessType.PUBLIC_ONLY)
+    classroom = models.ForeignKey(
+        'classrooms.Classroom', null=True, blank=True, related_name='live_sessions',
+        on_delete=models.SET_NULL,
+    )
     starts_at = models.DateTimeField()
     duration_minutes = models.PositiveIntegerField(default=60)
     price = models.DecimalField(max_digits=8, decimal_places=2, default=0)

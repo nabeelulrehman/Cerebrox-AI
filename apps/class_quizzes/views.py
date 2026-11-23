@@ -10,7 +10,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST, require_GET
 
 from apps.accounts.permissions import student_required, verified_teacher_required
-from apps.ai_engine.gemini_client import AIUnavailableError
+from apps.ai_engine.gemini_client import AIUnavailableError, user_facing_error_message
 from apps.classrooms.models import Classroom, Enrollment
 from apps.marketplace.services import livekit_ready, livekit_configuration_issues
 from livekit import api as livekit_api
@@ -181,7 +181,7 @@ def ai_generate(request, quiz_id):
         items = generate_mcqs_strict(quiz.classroom.subject or quiz.classroom.name, d['topic'],
                                      d['level'], d['difficulty'], d['count'])
     except AIUnavailableError as exc:
-        messages.error(request, f'{exc} No placeholder questions were added.')
+        messages.error(request, f'{user_facing_error_message(exc)} No placeholder questions were added.')
         return redirect('class_quizzes:teacher_detail', quiz_id=quiz.id)
     start = quiz.questions.count()
     for i, it in enumerate(items, 1):
@@ -275,7 +275,7 @@ def ai_suggest_view(request, answer_id):
         raise Http404
     except AIUnavailableError as exc:
         ans = AttemptAnswer.objects.get(pk=answer_id)
-        messages.error(request, str(exc))
+        messages.error(request, user_facing_error_message(exc))
     return redirect('class_quizzes:attempt_review', attempt_id=ans.attempt_id)
 
 
