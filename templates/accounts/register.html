@@ -1,38 +1,53 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}Register — CerebroX AI{% endblock %}
 {% block content %}
-<div class="max-w-md mx-auto py-14">
+<div class="max-w-xl mx-auto py-10">
   <div class="glass p-8">
-    <h1 class="font-display text-2xl font-bold mb-1">Create your account</h1>
-    <p class="text-sm mb-6" style="color:var(--txt-dim)">Free for students — start generating notes and quizzes.</p>
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6" aria-label="Choose registration type">
-      <a href="{% url 'accounts:register' %}" aria-current="page"
-         class="btn btn-primary w-full text-center">Register as Student</a>
-      <a href="{% url 'teachers:register' %}"
-         class="btn w-full text-center border border-white/10">Register as Teacher</a>
+    <h1 class="font-display text-2xl font-bold mb-1" data-register-title>{% if registration_type == 'teacher' %}Register as a teacher{% else %}Create your account{% endif %}</h1>
+    <p class="text-sm mb-6" style="color:var(--txt-dim)" data-register-description>{% if registration_type == 'teacher' %}Teacher accounts are reviewed by an administrator before teacher tools are available.{% else %}Free for students — start generating notes and quizzes.{% endif %}</p>
+
+    <div class="grid grid-cols-2 gap-3 mb-6" role="group" aria-label="Choose account type">
+      <button type="button" class="btn {% if registration_type == 'student' %}btn-primary{% else %}border border-white/10{% endif %} w-full" data-registration-choice="student" aria-pressed="{% if registration_type == 'student' %}true{% else %}false{% endif %}">Register as Student</button>
+      <button type="button" class="btn {% if registration_type == 'teacher' %}btn-primary{% else %}border border-white/10{% endif %} w-full" data-registration-choice="teacher" aria-pressed="{% if registration_type == 'teacher' %}true{% else %}false{% endif %}">Register as Teacher</button>
     </div>
-    <form method="post" class="flex flex-col gap-4">
+
+    <form method="post" class="flex flex-col gap-4" data-registration-form>
       {% csrf_token %}
+      <input type="hidden" name="registration_type" value="{{ registration_type }}" data-registration-type>
       <div class="grid grid-cols-2 gap-3">
-        <div><label class="label">First name</label>{{ form.first_name }}</div>
-        <div><label class="label">Last name</label>{{ form.last_name }}</div>
+        <div><label class="label" for="id_first_name">First name</label>{{ form.first_name }}</div>
+        <div><label class="label" for="id_last_name">Last name</label>{{ form.last_name }}</div>
       </div>
-      <div><label class="label">Username</label>{{ form.username }}</div>
-      <div><label class="label">Email</label>{{ form.email }}</div>
-      <div>
-        <label class="label">Study level</label>
-        {{ form.study_level }}
+      <div><label class="label" for="id_username">Username</label>{{ form.username }}</div>
+      <div><label class="label" for="id_email">Email</label>{{ form.email }}</div>
+
+      <div data-registration-fields="student" {% if registration_type != 'student' %}hidden{% endif %}>
+        <div class="flex flex-col gap-4">
+          <div><label class="label" for="id_study_level">Study level</label>{{ student_form.study_level }}</div>
+          <div><label class="label" for="id_study_level_custom">If “Other”, describe it</label>{{ student_form.study_level_custom }}</div>
+        </div>
       </div>
-      <div>
-        <label class="label">If "Other", describe it</label>
-        {{ form.study_level_custom }}
+
+      <div data-registration-fields="teacher" {% if registration_type != 'teacher' %}hidden{% endif %}>
+        <div class="flex flex-col gap-4">
+          <div><label class="label" for="id_headline">Professional headline</label>{{ teacher_form.headline }}</div>
+          <div><label class="label" for="id_bio">Short professional bio</label>{{ teacher_form.bio }}</div>
+          <div><label class="label" for="id_qualifications">Qualifications</label>{{ teacher_form.qualifications }}</div>
+          <div><label class="label" for="id_subjects">Subjects</label>{{ teacher_form.subjects }}<p class="text-xs mt-1" style="color:var(--txt-faint)">Enter subjects separated by commas.</p></div>
+          <div><label class="label" for="id_experience_years">Years of experience</label>{{ teacher_form.experience_years }}</div>
+          <div><label class="label" for="id_teaching_mode">Teaching mode</label>{{ teacher_form.teaching_mode }}</div>
+          <p class="text-xs" style="color:var(--txt-faint)">Teacher accounts are reviewed by an administrator before teacher tools are available.</p>
+        </div>
       </div>
+
       <div>
-        <label class="label">Password</label>
+        <label class="label" for="id_password1">Password</label>
         {{ form.password1 }}
         <p id="pwtext" class="text-xs mt-1" style="color:var(--txt-faint)">Use 8+ characters with a number.</p>
       </div>
-      <div><label class="label">Confirm password</label>{{ form.password2 }}</div>
+      <div><label class="label" for="id_password2">Confirm password</label>{{ form.password2 }}</div>
+
       {% if form.errors %}
         <div class="alert alert-error">Please fix the errors below and try again.</div>
         <ul class="text-xs" style="color:var(--bad)">
@@ -40,7 +55,7 @@
           {% for error in form.non_field_errors %}<li>{{ error }}</li>{% endfor %}
         </ul>
       {% endif %}
-      <button class="btn btn-primary w-full mt-2" type="submit">Create account</button>
+      <button class="btn btn-primary w-full mt-2" type="submit" data-registration-submit>{% if registration_type == 'teacher' %}Submit for verification{% else %}Create account{% endif %}</button>
     </form>
     <p class="text-sm mt-5 text-center" style="color:var(--txt-dim)">
       Already registered? <a href="{% url 'accounts:login' %}" class="grad-text font-medium">Login</a>
@@ -49,8 +64,42 @@
 </div>
 {% endblock %}
 {% block extra_js %}
-<script src="{% load static %}{% static 'js/auth.js' %}"></script>
+<script src="{% static 'js/auth.js' %}"></script>
 <script>
   document.querySelector('input[name="password1"]')?.addEventListener('input', function(){ pwMeter(this, 'pwtext'); });
+  (() => {
+    const form = document.querySelector('[data-registration-form]');
+    if (!form) return;
+    const roleInput = form.querySelector('[data-registration-type]');
+    const submit = form.querySelector('[data-registration-submit]');
+    const title = document.querySelector('[data-register-title]');
+    const description = document.querySelector('[data-register-description]');
+    const choices = document.querySelectorAll('[data-registration-choice]');
+    const panels = document.querySelectorAll('[data-registration-fields]');
+    const copy = {
+      student: {title: 'Create your account', description: 'Free for students — start generating notes and quizzes.', submit: 'Create account'},
+      teacher: {title: 'Register as a teacher', description: 'Teacher accounts are reviewed by an administrator before teacher tools are available.', submit: 'Submit for verification'},
+    };
+    const selectRole = role => {
+      roleInput.value = role;
+      choices.forEach(button => {
+        const selected = button.dataset.registrationChoice === role;
+        button.setAttribute('aria-pressed', String(selected));
+        button.classList.toggle('btn-primary', selected);
+        button.classList.toggle('border', !selected);
+        button.classList.toggle('border-white/10', !selected);
+      });
+      panels.forEach(panel => {
+        const active = panel.dataset.registrationFields === role;
+        panel.hidden = !active;
+        panel.querySelectorAll('input,select,textarea').forEach(field => { field.disabled = !active; });
+      });
+      title.textContent = copy[role].title;
+      description.textContent = copy[role].description;
+      submit.textContent = copy[role].submit;
+    };
+    choices.forEach(choice => choice.addEventListener('click', () => selectRole(choice.dataset.registrationChoice)));
+    selectRole(roleInput.value || 'student');
+  })();
 </script>
 {% endblock %}

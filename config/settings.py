@@ -270,6 +270,19 @@ GEMINI_RETRY_BASE_SECONDS = float(os.getenv('GEMINI_RETRY_BASE_SECONDS', '1'))
 # ---- Teacher ecosystem (optional) ----
 # Public base URL used when building shareable quiz links (falls back to the request host).
 SITE_URL = os.getenv('SITE_URL', '').rstrip('/')
+
+# Payment providers remain unavailable until both admin enablement and provider
+# credentials/merchant approval are supplied. Secrets are never stored in Django.
+PAYMENT_STRIPE_SECRET_KEY = _environment_value('PAYMENT_STRIPE_SECRET_KEY').strip()
+PAYMENT_STRIPE_WEBHOOK_SECRET = _environment_value('PAYMENT_STRIPE_WEBHOOK_SECRET').strip()
+PAYMENT_STRIPE_MODE = _environment_value('PAYMENT_STRIPE_MODE', 'test').strip().lower()
+PAYMENT_JAZZCASH_MERCHANT_ID = _environment_value('PAYMENT_JAZZCASH_MERCHANT_ID').strip()
+PAYMENT_JAZZCASH_PASSWORD = _environment_value('PAYMENT_JAZZCASH_PASSWORD').strip()
+PAYMENT_JAZZCASH_INTEGRITY_SALT = _environment_value('PAYMENT_JAZZCASH_INTEGRITY_SALT').strip()
+PAYMENT_JAZZCASH_MODE = _environment_value('PAYMENT_JAZZCASH_MODE', 'sandbox').strip().lower()
+PAYMENT_EASYPAISA_STORE_ID = _environment_value('PAYMENT_EASYPAISA_STORE_ID').strip()
+PAYMENT_EASYPAISA_HASH_KEY = _environment_value('PAYMENT_EASYPAISA_HASH_KEY').strip()
+PAYMENT_EASYPAISA_MODE = _environment_value('PAYMENT_EASYPAISA_MODE', 'sandbox').strip().lower()
 QUIZ_QR_TTL_SECONDS = int(os.getenv('QUIZ_QR_TTL_SECONDS', '120'))
 QUIZ_SUBMIT_GRACE_SECONDS = int(os.getenv('QUIZ_SUBMIT_GRACE_SECONDS', '10'))
 

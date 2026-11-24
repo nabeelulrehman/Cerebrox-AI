@@ -14,7 +14,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_GET, require_POST
+from django.views.decorators.http import require_GET, require_POST, require_http_methods
 from botocore.exceptions import ClientError
 
 from apps.accounts.permissions import admin_required, verified_teacher_required
@@ -838,6 +838,8 @@ def session_book(request, session_id):
     _student(request)
     s = get_object_or_404(TeachingSession, pk=session_id, teacher__teacher_profile__verification_status='approved')
     try:
+        if not services.is_session_class_student(request.user, s):
+            return redirect('market:session_checkout', session_id=s.pk)
         b = services.book_session(request.user, s)
         b.session = s
         b.student = request.user
@@ -850,6 +852,133 @@ def session_book(request, session_id):
     except MarketError as exc:
         messages.error(request, str(exc))
     return redirect('market:session_detail', session_id=s.pk)
+
+
+@login_required
+@require_http_methods(['GET', 'POST'])
+def session_checkout(request, session_id):
+    _student(request)
+    session = get_object_or_404(
+        TeachingSession, pk=session_id,
+        teacher__teacher_profile__verification_status=TeacherProfile.Status.APPROVED,
+    )
+    if services.is_session_class_student(request.user, session):
+        messages.info(request, 'Enrolled students can join this class for free.')
+        return redirect('market:session_detail', session_id=session.pk)
+    if session.access_type not in (TeachingSession.AccessType.PUBLIC_ONLY,
+                                   TeachingSession.AccessType.CLASS_PUBLIC):
+        raise Http404
+    from .payment_gateways.base import payment_methods, method_is_enabled, configuration
+    methods = payment_methods()
+    payment = None
+    if request.method == 'POST':
+        method = request.POST.get('method', '')
+        if method not in Payment.Method.values or not method_is_enabled(method):
+            messages.error(request, 'That payment method is currently unavailable. Select an enabled method.')
+        else:
+            try:
+                payment = services.create_public_session_payment(request.user, session, method)
+                if method == Payment.Method.BANK_TRANSFER:
+                    return render(request, 'marketplace/bank_transfer.html', {
+                        'payment': payment, 'session': session, 'bank': configuration(),
+                    })
+                if method == Payment.Method.STRIPE:
+                    if payment.checkout_url:
+                        return redirect(payment.checkout_url)
+                    from .payment_gateways.stripe_gateway import create_checkout
+                    return redirect(create_checkout(payment, request))
+                messages.error(request, 'This payment provider is not available.')
+            except MarketError as exc:
+                messages.error(request, str(exc))
+            except Exception:
+                # Keep provider errors out of the customer UI and mark only this attempt as failed.
+                if payment:
+                    Payment.objects.filter(pk=payment.pk, status=Payment.Status.PENDING).update(
+                        status=Payment.Status.REJECTED)
+                messages.error(request, 'Could not start checkout. Please choose another available payment method.')
+    return render(request, 'marketplace/session_checkout.html', {
+        'session': session, 'methods': methods,
+    })
+
+
+@login_required
+@require_POST
+def bank_transfer_submit(request, payment_id):
+    _student(request)
+    payment = get_object_or_404(Payment, pk=payment_id, student=request.user,
+                                method=Payment.Method.BANK_TRANSFER)
+    receipt = request.FILES.get('receipt')
+    if receipt:
+        header = receipt.read(8)
+        receipt.seek(0)
+        valid_signature = (header.startswith(b'%PDF-') or header.startswith(b'\x89PNG\r\n\x1a\n')
+                           or header.startswith(b'\xff\xd8\xff'))
+        if receipt.size > 5 * 1024 * 1024 or not valid_signature:
+            messages.error(request, 'Upload a valid JPG, PNG, or PDF receipt up to 5 MB.')
+            return redirect('market:session_checkout', session_id=payment.session_id)
+    try:
+        services.submit_bank_transfer(payment, request.user, request.POST.get('transaction_reference', ''), receipt)
+        messages.success(request, 'Transfer details submitted. Your booking will be confirmed after admin verification.')
+        return redirect('market:payment_history')
+    except MarketError as exc:
+        messages.error(request, str(exc))
+    return redirect('market:session_checkout', session_id=payment.session_id)
+
+
+@login_required
+def payment_result(request, payment_reference):
+    _student(request)
+    payment = get_object_or_404(Payment, reference=payment_reference, student=request.user)
+    return render(request, 'marketplace/payment_result.html', {'payment': payment})
+
+
+@login_required
+def payment_history(request):
+    if request.user.is_student:
+        payments = Payment.objects.filter(student=request.user)
+    elif request.user.is_teacher:
+        payments = Payment.objects.filter(teacher=request.user, session__isnull=False)
+    else:
+        raise PermissionDenied
+    payments = payments.select_related('student', 'teacher', 'session').order_by('-created_at')
+    return render(request, 'marketplace/payment_history.html', {'payments': payments})
+
+
+@admin_required
+def payment_receipt(request, payment_id):
+    payment = get_object_or_404(Payment, pk=payment_id, method=Payment.Method.BANK_TRANSFER)
+    if not payment.receipt:
+        raise Http404
+    receipt_extension = os.path.splitext(payment.receipt.name)[1].lower()
+    response = FileResponse(payment.receipt.open('rb'), as_attachment=True,
+                            filename=f'{payment.reference}-receipt{receipt_extension}')
+    response['Cache-Control'] = 'private, no-store'
+    response['X-Content-Type-Options'] = 'nosniff'
+    return response
+
+
+@csrf_exempt
+@require_POST
+def stripe_webhook(request):
+    from .payment_gateways.stripe_gateway import parse_verified_event
+    try:
+        event = parse_verified_event(request)
+    except Exception:
+        return HttpResponse(status=400)
+    event_type = event['type']
+    if event_type in ('checkout.session.completed', 'checkout.session.async_payment_succeeded'):
+        checkout = event['data']['object']
+        if checkout.get('payment_status') == 'paid':
+            reference = (checkout.get('metadata') or {}).get('payment_reference')
+            services.confirm_provider_payment(
+                reference, checkout.get('id', ''), checkout.get('amount_total'),
+                checkout.get('currency', ''), checkout.get('payment_intent') or checkout.get('id', ''),
+            )
+    elif event_type in ('checkout.session.async_payment_failed', 'checkout.session.expired'):
+        checkout = event['data']['object']
+        reference = (checkout.get('metadata') or {}).get('payment_reference')
+        services.reject_provider_payment(reference, checkout.get('id', ''))
+    return HttpResponse(status=200)
 
 
 @login_required

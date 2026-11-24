@@ -8,7 +8,7 @@ class PreparationPlanForm(StyledFormMixin, forms.ModelForm):
     syllabus_file = forms.FileField(required=False, help_text='PDF, DOC, DOCX, PPT, PPTX, or image; up to 10 MB.')
     study_days = forms.MultipleChoiceField(choices=[(str(i), day) for i, day in enumerate(
         ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'])],
-        widget=forms.CheckboxSelectMultiple, required=False)
+        widget=forms.CheckboxSelectMultiple(attrs={'class': 'study-days-list'}), required=False)
     timezone = forms.ChoiceField(choices=[('Asia/Karachi', 'Pakistan (Asia/Karachi)'), ('UTC', 'UTC'),
         ('Asia/Dubai', 'Gulf (Asia/Dubai)'), ('Europe/London', 'UK (Europe/London)'),
         ('America/New_York', 'Eastern US (America/New_York)')], initial='Asia/Karachi')

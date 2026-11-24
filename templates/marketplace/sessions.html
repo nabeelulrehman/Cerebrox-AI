@@ -1,35 +1,45 @@
 {% extends "layouts/dashboard_layout.html" %}
+{% load static %}
 {% block title %}Teaching sessions{% endblock %}
+{% block extra_head %}{{ block.super }}<link rel="stylesheet" href="{% static 'css/market_sessions.css' %}">{% endblock %}
 {% block content %}
 <h1 class="font-display text-2xl font-bold mb-5">Teaching sessions <span class="text-xs font-normal" style="color:var(--txt-faint)">(optional)</span></h1>
 <div class="grid gap-4">
 {% for s in sessions %}
-  <article class="glass p-5">
-    <div class="flex flex-wrap justify-between items-start gap-3">
-      <div class="min-w-0">
+  <article class="glass p-5 session-card">
+    <div class="session-card__layout">
+      <div class="session-card__content">
         <a class="font-display text-lg font-semibold grad-text" href="{% url 'market:session_detail' s.id %}">{{ s.title }}</a>
-        {% if s.subject %}<p class="text-sm mt-1">{{ s.subject }}</p>{% endif %}
-        <p class="text-sm mt-1" style="color:var(--txt-dim)">
-          {{ s.teacher.get_full_name|default:s.teacher.username }} · {{ s.starts_at|date:"M j, Y" }} ·
-          {{ s.starts_at|date:"g:i A" }}–{{ s.ends_at|date:"g:i A" }} · {{ s.duration_minutes }} min
-        </p>
-        <p class="text-xs mt-1" style="color:var(--txt-faint)">LiveKit classroom · {{ s.get_access_type_display }}{% if s.access_type == 'class_only' %} · Free for enrolled students{% elif s.access_type == 'class_public' %} · Class students free; public booking PKR {{ s.price }}{% else %} · Booking PKR {{ s.price }}{% endif %}</p>
-        {% if s.student_booking and s.student_booking.status == 'confirmed' and s.status == 'ongoing' %}
-          <a class="btn btn-primary mt-3" href="{% url 'market:session_classroom' s.id %}">Join Class</a>
-        {% endif %}
-        {% if s.reminder_due %}<p class="text-sm mt-2" role="status">Reminder: this class starts within 24 hours.</p>{% endif %}
       </div>
-      <div class="flex flex-col items-end gap-2">
-        <span class="pill">{{ s.get_status_display }}</span>
-        {% if s.student_booking %}
-          <span class="pill">{{ s.student_booking.get_status_display }}</span>
-          {% if s.student_booking.status == 'cancelled' %}<span class="pill">Booking cancelled</span>{% endif %}
-        {% endif %}
-        {% if not s.student_booking and s.status == 'upcoming' %}
-          <a class="btn btn-primary" href="{% url 'market:session_detail' s.id %}">View &amp; book</a>
-        {% else %}
-          <a class="btn btn-ghost" href="{% url 'market:session_detail' s.id %}">View details</a>
-        {% endif %}
+      <div class="session-card__actions">
+        <div class="session-card__statuses">
+          <span class="pill">{{ s.get_status_display }}</span>
+          {% if s.student_booking %}
+            <span class="pill">{{ s.student_booking.get_status_display }}</span>
+            {% if s.student_booking.status == 'cancelled' %}<span class="pill">Booking cancelled</span>{% endif %}
+          {% endif %}
+        </div>
+      </div>
+      <div class="session-card__details-row">
+        <div class="session-card__details">
+          {% if s.subject %}<p class="text-sm mt-1">{{ s.subject }}</p>{% endif %}
+          <p class="text-sm mt-1" style="color:var(--txt-dim)">
+            {{ s.teacher.get_full_name|default:s.teacher.username }} · {{ s.starts_at|date:"M j, Y" }} ·
+            {{ s.starts_at|date:"g:i A" }}–{{ s.ends_at|date:"g:i A" }} · {{ s.duration_minutes }} min
+          </p>
+          <p class="text-xs mt-1" style="color:var(--txt-faint)">LiveKit classroom · {{ s.get_access_type_display }}{% if s.access_type == 'class_only' %} · Free for enrolled students{% elif s.access_type == 'class_public' %} · Class students free; public booking PKR {{ s.price }}{% else %} · Booking PKR {{ s.price }}{% endif %}</p>
+          {% if s.reminder_due %}<p class="text-sm mt-2" role="status">Reminder: this class starts within 24 hours.</p>{% endif %}
+        </div>
+        <div class="session-card__content-actions">
+          {% if s.student_booking and s.student_booking.status == 'confirmed' and s.status == 'ongoing' %}
+            <a class="btn btn-primary" href="{% url 'market:session_classroom' s.id %}">Join Class</a>
+          {% endif %}
+          {% if not s.student_booking and s.status == 'upcoming' %}
+            <a class="btn btn-primary" href="{% url 'market:session_detail' s.id %}">View &amp; book</a>
+          {% else %}
+            <a class="btn btn-ghost" href="{% url 'market:session_detail' s.id %}">View details</a>
+          {% endif %}
+        </div>
       </div>
     </div>
   </article>

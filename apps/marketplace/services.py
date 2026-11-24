@@ -535,13 +535,137 @@ def decide_payment(admin, payment_id, confirm: bool):
     p = Payment.objects.select_for_update().filter(pk=payment_id, status=Payment.Status.PENDING).first()
     if p is None:
         raise MarketError('Payment not found or already decided.')
+    if p.method and p.method != Payment.Method.BANK_TRANSFER and p.session_id:
+        raise MarketError('Gateway payments are decided only by the verified provider webhook.')
+    if confirm and p.method == Payment.Method.BANK_TRANSFER and not (
+        p.transaction_reference and p.receipt
+    ):
+        raise MarketError('A bank transfer cannot be approved before its receipt and transaction reference are submitted.')
+    if p.method == Payment.Method.BANK_TRANSFER:
+        p.reviewed_at, p.reviewed_by = timezone.now(), admin
     p.status = Payment.Status.CONFIRMED if confirm else Payment.Status.REJECTED
     p.confirmed_at, p.confirmed_by = timezone.now(), admin
-    p.save(update_fields=['status', 'confirmed_at', 'confirmed_by'])
+    fields = ['status', 'confirmed_at', 'confirmed_by']
+    if p.method == Payment.Method.BANK_TRANSFER:
+        fields += ['reviewed_at', 'reviewed_by']
+    p.save(update_fields=fields)
     if p.session_id:
         SessionBooking.objects.filter(session_id=p.session_id, student=p.student).update(
             status=SessionBooking.Status.CONFIRMED if confirm else SessionBooking.Status.CANCELLED)
     return p
+
+
+@transaction.atomic
+def create_public_session_payment(student, session, method):
+    """Hold a public booking while payment is pending; enrolled members use free booking."""
+    if not student.is_student:
+        raise MarketError('Only students can book sessions.')
+    session = TeachingSession.objects.select_for_update().get(pk=session.pk)
+    if is_session_class_student(student, session):
+        raise MarketError('Enrolled class students should join this session for free.')
+    if session.access_type not in (TeachingSession.AccessType.PUBLIC_ONLY,
+                                    TeachingSession.AccessType.CLASS_PUBLIC):
+        raise MarketError('This session is only available to enrolled class students.')
+    if method not in Payment.Method.values:
+        raise MarketError('Select a supported payment method.')
+    from .payment_gateways.base import method_is_enabled
+    if not method_is_enabled(method):
+        raise MarketError('That payment method is currently unavailable. Choose an enabled method.')
+    sync_session_status(session)
+    if session.status != TeachingSession.Status.UPCOMING or session.starts_at <= timezone.now():
+        raise MarketError('Public booking is only available before the session starts.')
+    booking = SessionBooking.objects.select_for_update().filter(session=session, student=student).first()
+    if booking and booking.status == SessionBooking.Status.CONFIRMED:
+        raise MarketError('You already booked this session.')
+    occupied = session.bookings.exclude(status=SessionBooking.Status.CANCELLED)
+    if booking:
+        occupied = occupied.exclude(pk=booking.pk)
+    if occupied.count() >= session.capacity:
+        raise MarketError('This session is full.')
+    payment = Payment.objects.select_for_update().filter(
+        session=session, student=student, status=Payment.Status.PENDING,
+    ).first()
+    if payment:
+        if payment.method and payment.method != method:
+            raise MarketError('A payment attempt is already pending. Submit its transfer receipt or wait for confirmation.')
+        payment.method = method
+        payment.save(update_fields=['method'])
+    else:
+        payment = Payment.objects.create(student=student, teacher=session.teacher, session=session,
+                                         amount=session.price, method=method)
+    if booking is None:
+        SessionBooking.objects.create(session=session, student=student,
+                                      status=SessionBooking.Status.PENDING_PAYMENT)
+    else:
+        booking.status = SessionBooking.Status.PENDING_PAYMENT
+        booking.save(update_fields=['status'])
+    return payment
+
+
+@transaction.atomic
+def submit_bank_transfer(payment, student, transaction_reference, receipt):
+    payment = Payment.objects.select_for_update().select_related('session').filter(
+        pk=payment.pk, student=student, method=Payment.Method.BANK_TRANSFER,
+        status=Payment.Status.PENDING, session__isnull=False,
+    ).first()
+    if payment is None:
+        raise MarketError('Pending bank transfer was not found.')
+    if not transaction_reference.strip() or receipt is None:
+        raise MarketError('Enter the bank transaction reference and upload a payment receipt.')
+    transaction_reference = transaction_reference.strip()[:100]
+    if payment.transaction_reference or payment.receipt:
+        raise MarketError('Transfer details have already been submitted for this payment.')
+    if Payment.objects.filter(transaction_reference=transaction_reference).exists():
+        raise MarketError('That transaction reference was already submitted.')
+    payment.transaction_reference = transaction_reference
+    payment.receipt = receipt
+    try:
+        with transaction.atomic():
+            payment.save(update_fields=['transaction_reference', 'receipt'])
+    except IntegrityError as exc:
+        raise MarketError('That transaction reference was already submitted.') from exc
+    return payment
+
+
+@transaction.atomic
+def confirm_provider_payment(payment_reference, provider_session_id, amount_minor, currency, provider_reference):
+    payment = Payment.objects.select_for_update().filter(
+        reference=payment_reference, method=Payment.Method.STRIPE,
+        status=Payment.Status.PENDING, session__isnull=False,
+    ).first()
+    if payment is None:
+        return False
+    expected_minor = int(payment.amount * 100)
+    if (payment.provider_session_id != provider_session_id or amount_minor != expected_minor
+            or currency.lower() != 'pkr'):
+        return False
+    payment.status = Payment.Status.CONFIRMED
+    payment.confirmed_at = timezone.now()
+    payment.provider_reference = provider_reference[:128]
+    payment.save(update_fields=['status', 'confirmed_at', 'provider_reference'])
+    SessionBooking.objects.filter(session=payment.session, student=payment.student,
+                                  status=SessionBooking.Status.PENDING_PAYMENT).update(
+        status=SessionBooking.Status.CONFIRMED,
+    )
+    return True
+
+
+@transaction.atomic
+def reject_provider_payment(payment_reference, provider_session_id):
+    payment = Payment.objects.select_for_update().filter(
+        reference=payment_reference, method=Payment.Method.STRIPE,
+        status=Payment.Status.PENDING, session__isnull=False,
+        provider_session_id=provider_session_id,
+    ).first()
+    if payment is None:
+        return False
+    payment.status = Payment.Status.REJECTED
+    payment.save(update_fields=['status'])
+    SessionBooking.objects.filter(session=payment.session, student=payment.student,
+                                  status=SessionBooking.Status.PENDING_PAYMENT).update(
+        status=SessionBooking.Status.CANCELLED,
+    )
+    return True
 
 
 @transaction.atomic

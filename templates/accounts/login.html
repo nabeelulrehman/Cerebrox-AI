@@ -18,10 +18,7 @@
       </div>
       <button class="btn btn-primary w-full mt-2" type="submit">Login</button>
     </form>
-    <p class="text-sm mt-5 text-center" style="color:var(--txt-dim)">
-      No account? <a href="{% url 'accounts:register' %}" class="grad-text font-medium">Register</a>
-      &middot; <a href="{% url 'teachers:register' %}" class="grad-text font-medium">Register as a teacher</a>
-    </p>
+    <a href="{% url 'accounts:register' %}" class="btn w-full text-center mt-4">Register</a>
   </div>
 </div>
 {% endblock %}

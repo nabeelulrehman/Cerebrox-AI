@@ -8,7 +8,6 @@
     <h1 class="font-display text-2xl font-bold">Welcome, {{ user.first_name|default:user.username }}!</h1>
     <p>Here's how you're doing across CerebroX AI.</p>
   </header>
-  <a class="btn btn-primary mb-4 inline-block" href="{% url 'preparation:dashboard' %}">Personalized Exam Preparation</a>
 
   <div class="student-stats">
     {% include "components/stat_card.html" with label="Total Quizzes" value=overview.total_quizzes %}
@@ -56,6 +55,11 @@
         <p class="dashboard-empty">No quizzes attempted yet.</p>
       {% endfor %}
     </div>
+  </section>
+
+  <section class="dashboard-section">
+    <div class="flex justify-between items-center gap-3 mb-3"><h2 class="font-display font-semibold">Recent session payments</h2><a class="btn btn-ghost" href="{% url 'market:payment_history' %}">Payment history</a></div>
+    {% for payment in recent_payments %}<div class="glass p-3 mb-2 flex justify-between gap-3"><span>{{ payment.session.title|default:payment.resource.title }} · PKR {{ payment.amount }}</span><span class="pill">{{ payment.get_status_display }}</span></div>{% empty %}<p class="dashboard-empty">No payment activity yet.</p>{% endfor %}
   </section>
 
   {% if recommendations %}

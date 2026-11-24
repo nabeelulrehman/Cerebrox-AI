@@ -3,6 +3,7 @@ from django.shortcuts import render, redirect
 
 from apps.analytics import performance, weak_topics, recommendations
 from apps.quizzes.models import Quiz
+from apps.marketplace.models import Payment
 
 
 @login_required
@@ -19,5 +20,6 @@ def home(request):
         'weak': weak_topics.strongest_and_weakest(request.user),
         'recommendations': recommendations.recommendations_for_student(request.user, use_ai=False)[:3],
         'recent_quizzes': Quiz.objects.filter(student=request.user, completed=True).select_related('topic')[:5],
+        'recent_payments': Payment.objects.filter(student=request.user, session__isnull=False).select_related('session')[:5],
     }
     return render(request, 'student/dashboard.html', context)

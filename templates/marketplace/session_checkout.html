@@ -1,0 +1,21 @@
+{% extends "layouts/dashboard_layout.html" %}
+{% block title %}Checkout · {{ session.title }}{% endblock %}
+{% block content %}
+<p class="mb-4"><a class="grad-text" href="{% url 'market:session_detail' session.id %}">← Back to session</a></p>
+<section class="glass p-5 max-w-2xl">
+  <h1 class="font-display text-2xl font-bold">Book {{ session.title }}</h1>
+  <p class="mt-2">Total: <strong>PKR {{ session.price }}</strong></p>
+  <h2 class="font-display text-lg font-semibold mt-5 mb-3">Choose payment method</h2>
+  <form method="post">{% csrf_token %}
+    <div class="grid gap-3">
+      {% for method in methods %}
+        <label class="glass p-4 flex gap-3 items-start {% if not method.enabled %}opacity-60{% endif %}">
+          <input type="radio" name="method" value="{{ method.code }}" {% if not method.enabled %}disabled{% endif %} required>
+          <span><strong>{{ method.label }}</strong>{% if not method.enabled %}<span class="block text-sm mt-1">Currently unavailable. {{ method.reason }}</span>{% endif %}</span>
+        </label>
+      {% endfor %}
+    </div>
+    <button class="btn btn-primary mt-5" type="submit">Continue to payment</button>
+  </form>
+</section>
+{% endblock %}

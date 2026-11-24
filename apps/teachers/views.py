@@ -33,6 +33,10 @@ def dashboard(request):
         )
         return render(request, 'teacher/dashboard.html', {'profile': None}, status=409)
     ctx = {'profile': profile}
+    from apps.marketplace.models import Payment
+    ctx['recent_session_payments'] = Payment.objects.filter(
+        teacher=request.user, session__isnull=False,
+    ).select_related('student', 'session')[:5]
     if profile.is_approved:
         classes = Classroom.objects.filter(teacher=request.user, is_active=True)
         ctx.update({

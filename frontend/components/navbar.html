@@ -1,7 +1,14 @@
 {% load static %}
 <header class="sticky top-0 z-40 border-b" style="border-color:var(--line); background:var(--panel); backdrop-filter:blur(14px);">
   <div class="site-header-inner max-w-7xl mx-auto px-4 md:px-8 h-16 flex items-center justify-between">
-    <a href="{% url 'public:landing' %}" class="site-brand flex items-center gap-2 font-display font-bold text-lg">
+    <div class="site-header-left">
+      {% if user.is_authenticated %}
+        <button type="button" class="site-mobile-menu" aria-label="Open navigation menu" aria-expanded="false" aria-controls="sidebar" data-mobile-sidebar-toggle>
+          <svg data-menu-icon viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+          <svg data-close-icon viewBox="0 0 24 24" aria-hidden="true" hidden><path d="m6 6 12 12M18 6 6 18"/></svg>
+        </button>
+      {% endif %}
+      <a href="{% url 'public:landing' %}" class="site-brand flex items-center gap-2 font-display font-bold text-lg">
       <svg class="site-brand__icon" viewBox="0 0 32 32" aria-hidden="true">
         <path d="M15.9 6.1a5.1 5.1 0 0 0-9.2 2.8 4.7 4.7 0 0 0-1.1 8.7 4.8 4.8 0 0 0 4.1 7.7 4.9 4.9 0 0 0 6.2 2.2V6.1Z"/>
         <path d="M16.1 6.1a5.1 5.1 0 0 1 9.2 2.8 4.7 4.7 0 0 1 1.1 8.7 4.8 4.8 0 0 1-4.1 7.7 4.9 4.9 0 0 1-6.2 2.2V6.1Z"/>
@@ -11,7 +18,8 @@
         <circle cx="16" cy="9.5" r="1.15"/><circle cx="16" cy="22.5" r="1.15"/>
       </svg>
       <span class="grad-text">CerebroX AI</span>
-    </a>
+      </a>
+    </div>
     <div class="site-header-actions flex items-center gap-2">
       {% if user.is_authenticated %}
         <div class="site-profile-menu" data-profile-menu>
@@ -49,6 +57,10 @@
     </div>
   </div>
 </header>
+{% if user.is_authenticated %}
+<button type="button" class="mobile-sidebar-backdrop" aria-label="Close navigation menu" data-mobile-sidebar-backdrop hidden></button>
+<script src="{% static 'js/mobile_sidebar.js' %}?v=1" defer></script>
+{% endif %}
 {% if user.is_authenticated %}
 <dialog class="site-profile-dialog" aria-label="Profile settings" data-profile-dialog>
   <section class="site-profile-dialog__panel">

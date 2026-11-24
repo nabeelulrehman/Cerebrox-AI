@@ -1,0 +1,25 @@
+{% extends "layouts/dashboard_layout.html" %}
+{% block title %}Bank transfer · {{ session.title }}{% endblock %}
+{% block content %}
+<section class="glass p-5 max-w-2xl">
+  <h1 class="font-display text-2xl font-bold">Bank transfer</h1>
+  <p class="mt-2">Transfer <strong>PKR {{ payment.amount }}</strong> and submit the transaction reference with your receipt. Booking access is granted after admin verification.</p>
+  <dl class="grid sm:grid-cols-2 gap-3 mt-5">
+    {% if bank.bank_account_title %}<div><dt class="label">Account title</dt><dd>{{ bank.bank_account_title }}</dd></div>{% endif %}
+    {% if bank.bank_name %}<div><dt class="label">Bank</dt><dd>{{ bank.bank_name }}</dd></div>{% endif %}
+    {% if bank.bank_iban %}<div><dt class="label">IBAN</dt><dd>{{ bank.bank_iban }}</dd></div>{% endif %}
+    {% if bank.bank_raast_id %}<div><dt class="label">Raast ID</dt><dd>{{ bank.bank_raast_id }}</dd></div>{% endif %}
+  </dl>
+  {% if bank.bank_instructions %}<p class="mt-4 whitespace-pre-line">{{ bank.bank_instructions }}</p>{% endif %}
+  {% if not payment.transaction_reference or not payment.receipt %}
+    <form method="post" enctype="multipart/form-data" action="{% url 'market:bank_transfer_submit' payment.id %}" class="mt-5 grid gap-3">
+      {% csrf_token %}
+      <label class="label" for="transaction_reference">Transaction reference</label>
+      <input class="input" id="transaction_reference" name="transaction_reference" maxlength="100" required>
+      <label class="label" for="receipt">Payment receipt (JPG, PNG, PDF; max 5 MB)</label>
+      <input class="input" id="receipt" name="receipt" type="file" accept="image/jpeg,image/png,application/pdf" required>
+      <button class="btn btn-primary" type="submit">Submit for verification</button>
+    </form>
+  {% else %}<p class="pill mt-5">Receipt submitted · awaiting admin review</p>{% endif %}
+</section>
+{% endblock %}

@@ -20,16 +20,34 @@ User = get_user_model()
 def register_view(request):
     if request.user.is_authenticated:
         return redirect('teachers:dashboard' if request.user.is_teacher else 'dashboard:home')
+    registration_type = request.POST.get('registration_type', 'student') if request.method == 'POST' else 'student'
+    if registration_type not in {'student', 'teacher'}:
+        registration_type = 'student'
+
+    from apps.teachers.forms import TeacherRegisterForm
     if request.method == 'POST':
-        form = RegisterForm(request.POST)
+        student_form = RegisterForm(request.POST if registration_type == 'student' else None)
+        teacher_form = TeacherRegisterForm(request.POST if registration_type == 'teacher' else None)
+        form = teacher_form if registration_type == 'teacher' else student_form
         if form.is_valid():
             user = form.save()
             login(request, user)
+            if registration_type == 'teacher':
+                messages.success(
+                    request,
+                    'Account created. An administrator must verify your profile before you can use teacher tools.',
+                )
+                return redirect('teachers:dashboard')
             messages.success(request, 'Welcome to CerebroX AI! Now add the courses you want to study.')
             return redirect('learning:courses')
     else:
-        form = RegisterForm()
-    return render(request, 'accounts/register.html', {'form': form})
+        student_form = RegisterForm()
+        teacher_form = TeacherRegisterForm()
+        form = teacher_form if registration_type == 'teacher' else student_form
+    return render(request, 'accounts/register.html', {
+        'form': form, 'student_form': student_form, 'teacher_form': teacher_form,
+        'registration_type': registration_type,
+    })
 
 
 def login_view(request):

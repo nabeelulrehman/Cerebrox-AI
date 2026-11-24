@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% block body_class %}dashboard-body{% endblock %}
 {% block page_layout_class %}has-sidebar{% if not user.is_admin_role and not user.is_teacher %} student-page-layout{% endif %}{% endblock %}
 {% block sidebar %}
   {% if user.is_admin_role %}

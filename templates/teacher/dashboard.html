@@ -28,5 +28,9 @@
     {% for c in classes %}<a href="{% url 'classrooms:teacher_detail' c.id %}" class="block py-2 border-b" style="border-color:var(--line)">{{ c.name }} <span class="text-xs" style="color:var(--txt-faint)">{{ c.subject }}</span></a>
     {% empty %}<p class="text-sm" style="color:var(--txt-faint)">No classes yet. Create one to invite students.</p>{% endfor %}
   </div>
+  <section class="glass p-6 mt-5">
+    <div class="flex justify-between items-center gap-3 mb-3"><h2 class="font-display font-semibold">Recent session payments</h2><a class="btn btn-ghost" href="{% url 'market:payment_history' %}">Payment history</a></div>
+    {% for payment in recent_session_payments %}<div class="py-2 border-b flex justify-between gap-3" style="border-color:var(--line)"><span>{{ payment.session.title }} · {{ payment.student.get_full_name|default:payment.student.username }} · PKR {{ payment.amount }}</span><span class="pill">{{ payment.get_status_display }}</span></div>{% empty %}<p class="text-sm" style="color:var(--txt-faint)">No session payments yet.</p>{% endfor %}
+  </section>
 {% endif %}
 {% endblock %}

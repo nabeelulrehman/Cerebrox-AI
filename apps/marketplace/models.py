@@ -104,12 +104,17 @@ class Resource(models.Model):
 
 
 class Payment(models.Model):
-    """A purchase CLAIM. Access is granted only once an administrator confirms the payment
-    (no payment gateway is integrated; confirmation is a manual, audited step)."""
+    """A payment attempt for a resource purchase or live-session booking."""
     class Status(models.TextChoices):
         PENDING = 'pending', 'Awaiting confirmation'
         CONFIRMED = 'confirmed', 'Confirmed'
         REJECTED = 'rejected', 'Rejected'
+
+    class Method(models.TextChoices):
+        JAZZCASH = 'jazzcash', 'JazzCash'
+        EASYPAISA = 'easypaisa', 'Easypaisa'
+        BANK_TRANSFER = 'bank_transfer', 'Bank Transfer (Raast / IBAN)'
+        STRIPE = 'stripe', 'Stripe'
 
     student = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='payments', on_delete=models.CASCADE)
     teacher = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='+', on_delete=models.CASCADE)
@@ -118,6 +123,16 @@ class Payment(models.Model):
                                 on_delete=models.CASCADE)
     amount = models.DecimalField(max_digits=8, decimal_places=2)
     reference = models.CharField(max_length=40, unique=True, default=_payment_ref)
+    method = models.CharField(max_length=20, choices=Method.choices, blank=True, default='')
+    provider_reference = models.CharField(max_length=128, blank=True, db_index=True)
+    provider_session_id = models.CharField(max_length=255, blank=True, db_index=True)
+    checkout_url = models.URLField(max_length=1000, blank=True)
+    transaction_reference = models.CharField(max_length=100, blank=True)
+    receipt = models.FileField(storage=private_storage, upload_to=_upload_to, blank=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                    related_name='reviewed_transfer_payments', on_delete=models.SET_NULL)
+    review_note = models.CharField(max_length=500, blank=True)
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     confirmed_at = models.DateTimeField(null=True, blank=True)
@@ -133,7 +148,31 @@ class Payment(models.Model):
                                     & ~Q(status='rejected'), name='one_live_payment_per_resource'),
             models.UniqueConstraint(fields=['student', 'session'], condition=Q(session__isnull=False)
                                     & ~Q(status='rejected'), name='one_live_payment_per_session'),
+            models.UniqueConstraint(fields=['transaction_reference'], condition=~Q(transaction_reference=''),
+                                    name='uniq_payment_transaction_reference'),
         ]
+
+
+class PaymentMethodConfiguration(models.Model):
+    """Admin-managed availability and bank transfer destination; secrets stay in environment variables."""
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+    jazzcash_enabled = models.BooleanField(default=False)
+    easypaisa_enabled = models.BooleanField(default=False)
+    bank_transfer_enabled = models.BooleanField(default=False)
+    stripe_enabled = models.BooleanField(default=False)
+    bank_account_title = models.CharField(max_length=160, blank=True)
+    bank_name = models.CharField(max_length=160, blank=True)
+    bank_iban = models.CharField(max_length=64, blank=True)
+    bank_raast_id = models.CharField(max_length=100, blank=True)
+    bank_instructions = models.TextField(blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'payment method configuration'
+        verbose_name_plural = 'payment method configuration'
+
+    def __str__(self):
+        return 'Payment method configuration'
 
 
 class GuidanceRequest(models.Model):
