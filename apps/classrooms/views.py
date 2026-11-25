@@ -76,6 +76,9 @@ def teacher_regenerate_code(request, class_id):
 @require_POST
 def teacher_invite(request, class_id):
     c = _own_class(request, class_id)
+    if c.price > 0:
+        messages.error(request, 'This is a paid class. Students must use its join code and complete payment before access is granted.')
+        return redirect('classrooms:teacher_detail', class_id=c.id)
     form = InviteForm(request.POST)
     if form.is_valid():
         try:
@@ -161,6 +164,11 @@ def join_class(request):
     form = JoinCodeForm(request.POST)
     if form.is_valid():
         try:
+            paid_class = Classroom.objects.filter(join_code=form.cleaned_data['code'].strip().upper(),
+                is_active=True).exclude(enrollment_policy=Classroom.Policy.INVITE_ONLY).first()
+            if paid_class and paid_class.price > 0:
+                request.session['pending_paid_class_code'] = paid_class.join_code
+                return redirect('market:teacher_payment_checkout', kind='classroom', target_id=paid_class.pk)
             enr = services.join_by_code(request.user, form.cleaned_data['code'])
             if enr.status == Enrollment.Status.ACTIVE:
                 messages.success(request, f'You joined {enr.classroom.name}.')
@@ -174,6 +182,11 @@ def join_class(request):
 @student_required
 @require_POST
 def respond_invite(request, enrollment_id):
+    enrollment = get_object_or_404(Enrollment, pk=enrollment_id, student=request.user,
+                                   status=Enrollment.Status.INVITED)
+    if enrollment.classroom.price > 0:
+        messages.error(request, 'This class requires a join code and payment before access can be granted.')
+        return redirect('classrooms:my_classes')
     try:
         enr = services.respond_to_invite(request.user, enrollment_id, request.POST.get('decision') == 'accept')
         messages.success(request, 'Invitation accepted.' if enr.status == Enrollment.Status.ACTIVE else 'Invitation declined.')

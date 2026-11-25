@@ -8,7 +8,7 @@ from django.contrib.auth.decorators import login_required
 from django.conf import settings
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
-from django.db.models import Prefetch, Q
+from django.db.models import Count, Prefetch, Q, Sum
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -20,6 +20,7 @@ from botocore.exceptions import ClientError
 from apps.accounts.permissions import admin_required, verified_teacher_required
 from apps.classrooms.models import Enrollment
 from apps.teachers.models import TeacherProfile
+from apps.teachers.models import TeacherPaymentMethod
 from . import services
 from .forms import (
     GuidanceComposeForm, GuidanceForm, GuidanceReplyForm, ResourceForm, ResourceMetadataForm,
@@ -258,12 +259,57 @@ def resource_buy(request, resource_id):
         scan_status=Resource.ScanStatus.CLEAN,
     )
     try:
-        p = services.request_purchase(request.user, r)
-        messages.info(request, f'Purchase request recorded (reference {p.reference}). Access unlocks only after the '
-                               'payment is verified and confirmed by an administrator.')
+        services.request_purchase(request.user, r)
     except MarketError as exc:
-        messages.error(request, str(exc))
-    return redirect('market:resources')
+        if 'already own' not in str(exc).lower() and 'already have' not in str(exc).lower():
+            messages.error(request, str(exc))
+    return redirect('market:teacher_payment_checkout', kind='resource', target_id=r.pk)
+
+
+@login_required
+@require_http_methods(['GET', 'POST'])
+def teacher_payment_checkout(request, kind, target_id):
+    _student(request)
+    if kind == 'resource':
+        target = get_object_or_404(Resource, pk=target_id, visibility=Resource.Visibility.PAID,
+                                   scan_status=Resource.ScanStatus.CLEAN)
+        if services.has_confirmed_payment(request.user, target):
+            messages.info(request, 'You already have access to this resource.')
+            return redirect('market:resources')
+        resource, session = target, None
+    elif kind == 'session':
+        return redirect('market:session_checkout', session_id=target_id)
+    elif kind == 'classroom':
+        from apps.classrooms.models import Classroom
+        target = get_object_or_404(Classroom, pk=target_id, is_active=True,
+                                   teacher__teacher_profile__verification_status=TeacherProfile.Status.APPROVED)
+        if (request.session.get('pending_paid_class_code') != target.join_code
+                or target.price <= 0 or target.enrollment_policy == Classroom.Policy.INVITE_ONLY):
+            raise Http404
+        if target.enrollments.filter(student=request.user, status='active').exists():
+            messages.info(request, 'You already have access to this class.')
+            return redirect('classrooms:my_classes')
+        resource, session = None, None
+    else:
+        raise Http404
+    methods = TeacherPaymentMethod.objects.filter(teacher=target.teacher, is_active=True)
+    if request.method == 'POST':
+        selected = methods.filter(pk=request.POST.get('payment_method')).first()
+        try:
+            payment = services.submit_teacher_payment(request.user, resource=resource, session=session,
+                classroom=target if kind == 'classroom' else None,
+                payment_method=selected, transaction_reference=request.POST.get('transaction_reference', ''),
+                receipt=request.FILES.get('receipt'))
+            if kind == 'classroom':
+                request.session.pop('pending_paid_class_code', None)
+            messages.success(request, 'Payment submitted to the teacher for verification. Access is granted after approval.')
+            return redirect('market:payment_result', payment_reference=payment.reference)
+        except MarketError as exc:
+            messages.error(request, str(exc))
+    return render(request, 'marketplace/teacher_payment_checkout.html', {
+        'target': target, 'target_title': getattr(target, 'title', getattr(target, 'name', '')),
+        'kind': kind, 'methods': methods,
+    })
 
 
 # ---------------- guidance ----------------
@@ -418,6 +464,25 @@ def my_guidance(request):
 
 # ---------------- sessions ----------------
 
+def _teacher_session_list(teacher):
+    sessions = list(TeachingSession.objects.filter(teacher=teacher).annotate(
+        payment_count=Count('payments', distinct=True),
+        attendance_count=Count('attendance_records', distinct=True),
+    ).prefetch_related('bookings').order_by('-starts_at'))
+    for session in sessions:
+        session.booking_count = session.bookings.count()
+        session.has_related_records = bool(
+            session.booking_count or session.payment_count or session.attendance_count
+            or session.classroom_id or session.recording_key or session.livekit_egress_id
+            or session.recording_status not in (
+                TeachingSession.RecordingStatus.UNAVAILABLE,
+                TeachingSession.RecordingStatus.IDLE,
+            )
+            or session.status != TeachingSession.Status.UPCOMING
+        )
+    return sessions
+
+
 @verified_teacher_required
 def teacher_sessions(request):
     now = timezone.now()
@@ -427,7 +492,7 @@ def teacher_sessions(request):
         starts_at__lte=now,
     ):
         services.sync_session_status(session, now)
-    sessions = TeachingSession.objects.filter(teacher=request.user).prefetch_related('bookings').order_by('-starts_at')
+    sessions = _teacher_session_list(request.user)
     for session in sessions:
         if session.livekit_egress_id and session.recording_status in (
             TeachingSession.RecordingStatus.STARTING,
@@ -504,7 +569,8 @@ def session_detail(request, session_id):
         pk=session_id,
     )
     booking = SessionBooking.objects.filter(session=session, student=request.user).first()
-    if not (request.user.is_teacher and session.teacher_id == request.user.pk):
+    owns_session = request.user.is_teacher and session.teacher_id == request.user.pk
+    if not owns_session:
         _student(request)
         class_student = services.is_session_class_student(request.user, session)
         if session.access_type == TeachingSession.AccessType.CLASS_ONLY and not class_student:
@@ -772,8 +838,41 @@ def session_edit(request, session_id):
     return render(request, 'marketplace/teacher_sessions.html', {
         'form': form,
         'session': session,
-        'sessions': TeachingSession.objects.filter(teacher=request.user).prefetch_related('bookings'),
+        'sessions': _teacher_session_list(request.user),
     })
+
+
+@verified_teacher_required
+@require_POST
+def session_delete(request, session_id):
+    try:
+        with transaction.atomic():
+            session = get_object_or_404(
+                TeachingSession.objects.select_for_update(), pk=session_id, teacher=request.user,
+            )
+            title = session.title
+            starts_at = session.starts_at
+            recipients = list(session.bookings.filter(
+                status__in=(SessionBooking.Status.CONFIRMED, SessionBooking.Status.PENDING_PAYMENT),
+            ).exclude(student__email='').values_list('student__email', flat=True))
+            if session.recording_status in (
+                TeachingSession.RecordingStatus.STARTING,
+                TeachingSession.RecordingStatus.RECORDING,
+                TeachingSession.RecordingStatus.STOPPING,
+            ):
+                session = services.stop_livekit_recording(session)
+            if session.recording_key:
+                services.delete_livekit_recording(session)
+
+            # Detach payments before cascading session-owned bookings and attendance.
+            Payment.objects.filter(session=session).update(session_title=title, session=None)
+            session.delete()
+            if recipients and settings.EMAIL_HOST:
+                transaction.on_commit(lambda: services.notify_session_deletion(title, starts_at, recipients))
+        messages.success(request, f'Session {title} was permanently deleted. Payment and audit history was retained.')
+    except MarketError as exc:
+        messages.error(request, f'The session was not deleted: {exc}')
+    return redirect('market:teacher_sessions')
 
 
 @verified_teacher_required
@@ -836,7 +935,10 @@ def session_cancel(request, session_id):
 @require_POST
 def session_book(request, session_id):
     _student(request)
-    s = get_object_or_404(TeachingSession, pk=session_id, teacher__teacher_profile__verification_status='approved')
+    s = get_object_or_404(
+        TeachingSession, pk=session_id,
+        teacher__teacher_profile__verification_status='approved',
+    )
     try:
         if not services.is_session_class_student(request.user, s):
             return redirect('market:session_checkout', session_id=s.pk)
@@ -868,38 +970,25 @@ def session_checkout(request, session_id):
     if session.access_type not in (TeachingSession.AccessType.PUBLIC_ONLY,
                                    TeachingSession.AccessType.CLASS_PUBLIC):
         raise Http404
-    from .payment_gateways.base import payment_methods, method_is_enabled, configuration
-    methods = payment_methods()
-    payment = None
+    methods = TeacherPaymentMethod.objects.filter(teacher=session.teacher, is_active=True)
     if request.method == 'POST':
-        method = request.POST.get('method', '')
-        if method not in Payment.Method.values or not method_is_enabled(method):
-            messages.error(request, 'That payment method is currently unavailable. Select an enabled method.')
-        else:
-            try:
-                payment = services.create_public_session_payment(request.user, session, method)
-                if method == Payment.Method.BANK_TRANSFER:
-                    return render(request, 'marketplace/bank_transfer.html', {
-                        'payment': payment, 'session': session, 'bank': configuration(),
-                    })
-                if method == Payment.Method.STRIPE:
-                    if payment.checkout_url:
-                        return redirect(payment.checkout_url)
-                    from .payment_gateways.stripe_gateway import create_checkout
-                    return redirect(create_checkout(payment, request))
-                messages.error(request, 'This payment provider is not available.')
-            except MarketError as exc:
-                messages.error(request, str(exc))
-            except Exception:
-                # Keep provider errors out of the customer UI and mark only this attempt as failed.
-                if payment:
-                    Payment.objects.filter(pk=payment.pk, status=Payment.Status.PENDING).update(
-                        status=Payment.Status.REJECTED)
-                messages.error(request, 'Could not start checkout. Please choose another available payment method.')
+        method = methods.filter(pk=request.POST.get('payment_method')).first()
+        try:
+            payment = services.submit_teacher_payment(
+                request.user,
+                session=session,
+                payment_method=method,
+                transaction_reference=request.POST.get('transaction_reference', ''),
+                receipt=request.FILES.get('receipt'),
+            )
+            messages.success(request, 'Payment submitted. Your booking remains pending until the teacher verifies it.')
+            return redirect('market:payment_result', payment_reference=payment.reference)
+        except MarketError as exc:
+            messages.error(request, str(exc))
     return render(request, 'marketplace/session_checkout.html', {
-        'session': session, 'methods': methods,
+        'session': session,
+        'teacher_payment_methods': methods,
     })
-
 
 @login_required
 @require_POST
@@ -937,16 +1026,22 @@ def payment_history(request):
     if request.user.is_student:
         payments = Payment.objects.filter(student=request.user)
     elif request.user.is_teacher:
-        payments = Payment.objects.filter(teacher=request.user, session__isnull=False)
+        payments = Payment.objects.filter(teacher=request.user)
     else:
         raise PermissionDenied
-    payments = payments.select_related('student', 'teacher', 'session').order_by('-created_at')
-    return render(request, 'marketplace/payment_history.html', {'payments': payments})
+    payments = payments.select_related('student', 'teacher', 'session', 'resource', 'classroom').order_by('-created_at')
+    return render(request, 'marketplace/payment_history.html', {'payments': payments,
+        'teacher_earnings': payments.filter(status=Payment.Status.CONFIRMED).aggregate(total=Sum('teacher_earning'))['total'] or 0})
 
 
-@admin_required
+@login_required
 def payment_receipt(request, payment_id):
-    payment = get_object_or_404(Payment, pk=payment_id, method=Payment.Method.BANK_TRANSFER)
+    payment = get_object_or_404(Payment, pk=payment_id)
+    allowed = request.user.is_admin_role or (
+        payment.is_manual_teacher_payment and request.user.pk in (payment.student_id, payment.teacher_id)
+    ) or (not payment.is_manual_teacher_payment and request.user.is_admin_role)
+    if not allowed:
+        raise PermissionDenied
     if not payment.receipt:
         raise Http404
     receipt_extension = os.path.splitext(payment.receipt.name)[1].lower()
@@ -1031,7 +1126,8 @@ def review_create(request, teacher_id):
 @admin_required
 def admin_queue(request):
     return render(request, 'marketplace/admin_queue.html', {
-        'payments': Payment.objects.filter(status=Payment.Status.PENDING).select_related('student', 'teacher', 'resource', 'session'),
+        'payments': Payment.objects.filter(status=Payment.Status.PENDING, is_manual_teacher_payment=False)
+            .select_related('student', 'teacher', 'resource', 'session', 'classroom'),
         'reviews': Review.objects.filter(status=Review.Status.PENDING).select_related('student', 'teacher')})
 
 

@@ -1,0 +1,36 @@
+{% extends "layouts/dashboard_layout.html" %}
+{% block title %}Pay {{ target_title }} · CerebroX AI{% endblock %}
+{% block content %}
+<section class="glass p-5 max-w-2xl mx-auto">
+  <p class="text-sm" style="color:var(--txt-dim)">Manual teacher payment · {{ target.teacher.get_full_name|default:target.teacher.username }}</p>
+  <h1 class="font-display text-2xl font-bold mt-1">{{ target_title }}</h1>
+  <p class="mt-2">Amount due: <strong>PKR {{ target.price }}</strong></p>
+  <p class="text-sm mt-2" style="color:var(--txt-dim)">Transfer the exact amount using one of the teacher's active methods, then provide the transaction reference and a receipt. A screenshot alone does not verify payment. Access remains locked until the teacher reviews your submission.</p>
+  {% if methods %}
+  <form method="post" enctype="multipart/form-data" class="grid gap-4 mt-5">{% csrf_token %}
+    <label class="label" for="payment_method">Payment method</label>
+    <select class="field" id="payment_method" name="payment_method" required>
+      <option value="">Choose a method</option>
+      {% for method in methods %}<option value="{{ method.id }}">{{ method.get_method_display }} · {{ method.account_title }}</option>{% endfor %}
+    </select>
+    <div class="grid sm:grid-cols-2 gap-3">
+      {% for method in methods %}
+      <article class="glass-soft p-3"><strong>{{ method.get_method_display }}</strong>
+        <dl class="text-sm mt-2 grid gap-1">
+          <div><dt class="inline" style="color:var(--txt-dim)">Account title: </dt><dd class="inline">{{ method.account_title }}</dd></div>
+          {% if method.bank_name %}<div><dt class="inline" style="color:var(--txt-dim)">Bank: </dt><dd class="inline">{{ method.bank_name }}</dd></div>{% endif %}
+          {% if method.account_number %}<div><dt class="inline" style="color:var(--txt-dim)">Account: </dt><dd class="inline">{{ method.account_number }}</dd></div>{% endif %}
+          {% if method.iban %}<div><dt class="inline" style="color:var(--txt-dim)">IBAN: </dt><dd class="inline">{{ method.iban }}</dd></div>{% endif %}
+        </dl>
+      </article>
+      {% endfor %}
+    </div>
+    <label class="label" for="transaction_reference">Transaction reference / ID</label>
+    <input class="field" id="transaction_reference" name="transaction_reference" maxlength="100" required>
+    <label class="label" for="receipt">Receipt or payment screenshot (JPG, PNG, PDF; max 5 MB)</label>
+    <input class="field" id="receipt" name="receipt" type="file" accept="image/jpeg,image/png,application/pdf" required>
+    <button class="btn btn-primary" type="submit">Submit payment for teacher verification</button>
+  </form>
+  {% else %}<p class="glass-soft p-4 mt-5">The teacher has not added an active payment method yet. You can use the available platform checkout options.</p>{% endif %}
+</section>
+{% endblock %}

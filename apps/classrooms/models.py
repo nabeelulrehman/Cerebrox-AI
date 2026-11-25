@@ -11,6 +11,7 @@ import secrets
 from django.conf import settings
 from django.db import models
 from django.db.models import Q
+from decimal import Decimal
 
 
 def _new_join_code():
@@ -27,6 +28,8 @@ class Classroom(models.Model):
     name = models.CharField(max_length=120)
     subject = models.CharField(max_length=120, blank=True)
     description = models.TextField(blank=True)
+    price = models.DecimalField(max_digits=8, decimal_places=2, default=Decimal('0.00'),
+                                help_text='One-time class access price in PKR. Set to 0 for free enrollment.')
     join_code = models.CharField(max_length=12, unique=True, default=_new_join_code, editable=False)
     enrollment_policy = models.CharField(max_length=12, choices=Policy.choices, default=Policy.APPROVAL)
     listed_publicly = models.BooleanField(default=False, help_text='Show on your public teacher profile.')
@@ -35,7 +38,10 @@ class Classroom(models.Model):
 
     class Meta:
         ordering = ['-created_at']
-        constraints = [models.UniqueConstraint(fields=['teacher', 'name'], name='uniq_class_name_per_teacher')]
+        constraints = [
+            models.UniqueConstraint(fields=['teacher', 'name'], name='uniq_class_name_per_teacher'),
+            models.CheckConstraint(check=Q(price__gte=0), name='classroom_price_nonnegative'),
+        ]
 
     def __str__(self):
         return f'{self.name} ({self.teacher})'

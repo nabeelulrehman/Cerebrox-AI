@@ -120,7 +120,10 @@ class Payment(models.Model):
     teacher = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='+', on_delete=models.CASCADE)
     resource = models.ForeignKey(Resource, null=True, blank=True, related_name='payments', on_delete=models.CASCADE)
     session = models.ForeignKey('TeachingSession', null=True, blank=True, related_name='payments',
-                                on_delete=models.CASCADE)
+                                on_delete=models.SET_NULL)
+    session_title = models.CharField(max_length=160, blank=True, default='')
+    classroom = models.ForeignKey('classrooms.Classroom', null=True, blank=True, related_name='payments',
+                                  on_delete=models.CASCADE)
     amount = models.DecimalField(max_digits=8, decimal_places=2)
     reference = models.CharField(max_length=40, unique=True, default=_payment_ref)
     method = models.CharField(max_length=20, choices=Method.choices, blank=True, default='')
@@ -128,6 +131,13 @@ class Payment(models.Model):
     provider_session_id = models.CharField(max_length=255, blank=True, db_index=True)
     checkout_url = models.URLField(max_length=1000, blank=True)
     transaction_reference = models.CharField(max_length=100, blank=True)
+    is_manual_teacher_payment = models.BooleanField(default=False, db_index=True)
+    teacher_payment_method = models.ForeignKey(
+        'teachers.TeacherPaymentMethod', null=True, blank=True, related_name='payments', on_delete=models.SET_NULL,
+    )
+    commission_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    platform_commission = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    teacher_earning = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     receipt = models.FileField(storage=private_storage, upload_to=_upload_to, blank=True)
     reviewed_at = models.DateTimeField(null=True, blank=True)
     reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
@@ -142,15 +152,46 @@ class Payment(models.Model):
     class Meta:
         ordering = ['-created_at']
         constraints = [
-            models.CheckConstraint(check=Q(resource__isnull=False) | Q(session__isnull=False),
-                                   name='payment_has_target'),
             models.UniqueConstraint(fields=['student', 'resource'], condition=Q(resource__isnull=False)
                                     & ~Q(status='rejected'), name='one_live_payment_per_resource'),
             models.UniqueConstraint(fields=['student', 'session'], condition=Q(session__isnull=False)
                                     & ~Q(status='rejected'), name='one_live_payment_per_session'),
+            models.UniqueConstraint(fields=['student', 'classroom'], condition=Q(classroom__isnull=False)
+                                    & ~Q(status='rejected'), name='one_live_payment_per_classroom'),
             models.UniqueConstraint(fields=['transaction_reference'], condition=~Q(transaction_reference=''),
                                     name='uniq_payment_transaction_reference'),
         ]
+
+
+class CommissionSettings(models.Model):
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+    percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                   related_name='+')
+
+    class Meta:
+        constraints = [models.CheckConstraint(check=Q(percentage__gte=0) & Q(percentage__lte=100),
+                                              name='commission_percentage_0_100')]
+
+    class Meta:
+        constraints = [models.CheckConstraint(check=Q(percentage__gte=0) & Q(percentage__lte=100),
+                                              name='commission_percentage_0_100')]
+
+    def __str__(self):
+        return f'Platform commission: {self.percentage}%'
+
+
+class PaymentStatusAudit(models.Model):
+    payment = models.ForeignKey(Payment, related_name='status_audits', on_delete=models.CASCADE)
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
+    old_status = models.CharField(max_length=10, choices=Payment.Status.choices)
+    new_status = models.CharField(max_length=10, choices=Payment.Status.choices)
+    note = models.CharField(max_length=500, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at', 'pk']
 
 
 class PaymentMethodConfiguration(models.Model):

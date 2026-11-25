@@ -9,4 +9,6 @@ urlpatterns = [
     path('students/<int:student_id>/', v.student_detail, name='student_detail'),
     path('teachers/', v.teachers_list, name='teachers'),
     path('teachers/<int:profile_id>/decide/', v.teacher_decide, name='teacher_decide'),
+    path('payments/', v.payment_reports, name='payment_reports'),
+    path('payments/commission/', v.commission_update, name='commission_update'),
 ]

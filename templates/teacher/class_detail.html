@@ -13,7 +13,7 @@
     <h2 class="font-display font-semibold mb-3">Students ({{ active|length }})</h2>
     {% for e in active %}<div class="flex justify-between items-center py-2 border-b" style="border-color:var(--line)">
       <a href="{% url 'classrooms:teacher_student_progress' c.id e.student.id %}" class="text-sm">{{ e.student.get_full_name|default:e.student.username }}</a>
-      <form method="post" action="{% url 'classrooms:teacher_remove' e.id %}" onsubmit="return confirm('Remove this student from the class?')">{% csrf_token %}<button class="text-xs" style="color:var(--bad)">Remove</button></form></div>
+      <form method="post" action="{% url 'classrooms:teacher_remove' e.id %}" data-confirm="Remove this student from the class?">{% csrf_token %}<button class="text-xs" style="color:var(--bad)">Remove</button></form></div>
     {% empty %}<p class="text-sm" style="color:var(--txt-faint)">No students yet.</p>{% endfor %}
 
     {% if requests %}<h3 class="font-semibold mt-5 mb-2 text-sm">Join requests</h3>

@@ -6,7 +6,7 @@
 <div class="grid md:grid-cols-2 gap-6">
   <div class="glass p-5"><h2 class="font-display font-semibold mb-3">Your resources</h2>
   {% for r in resources %}<div class="flex justify-between items-center py-2 border-b" style="border-color:var(--line)"><span class="text-sm">{{ r.title }} <span class="pill">{{ r.get_visibility_display }}</span> <span class="pill">{{ r.get_scan_status_display }}</span>{% if r.scan_error %}<span class="text-xs" role="status">{{ r.scan_error }}</span>{% endif %}</span>
-    <form method="post" action="{% url 'market:resource_delete' r.id %}" onsubmit="return confirm('Delete this file?')">{% csrf_token %}<button class="text-xs" style="color:var(--bad)">Delete</button></form></div>
+    <form method="post" action="{% url 'market:resource_delete' r.id %}" data-confirm="Delete this file?">{% csrf_token %}<button class="text-xs" style="color:var(--bad)">Delete</button></form></div>
   {% empty %}<p class="text-sm" style="color:var(--txt-faint)">Nothing uploaded.</p>{% endfor %}</div>
   {% if direct_upload %}
   <form method="post" class="glass p-5 grid gap-3 content-start" data-resource-upload

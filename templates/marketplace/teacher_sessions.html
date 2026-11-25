@@ -9,7 +9,7 @@
       <article class="py-3 border-b" style="border-color:var(--line)">
         <a class="font-medium grad-text" href="{% url 'market:session_detail' item.id %}">{{ item.title }}</a>
         <p class="text-sm mt-1" style="color:var(--txt-dim)">{{ item.starts_at|date:"M j, Y" }} · {{ item.starts_at|date:"g:i A" }}–{{ item.ends_at|date:"g:i A" }} · {{ item.get_status_display }}</p>
-        <p class="text-xs" style="color:var(--txt-faint)">{{ item.bookings.count }} total bookings · LiveKit classroom</p>
+        <p class="text-xs" style="color:var(--txt-faint)">{{ item.booking_count }} total bookings · LiveKit classroom</p>
         <p class="text-xs mt-1" style="color:var(--txt-dim)">{{ item.get_access_type_display }}{% if item.classroom %} · {{ item.classroom.name }}{% endif %}{% if item.access_type == 'class_public' or item.access_type == 'public_only' %} · Public booking: PKR {{ item.price }}{% endif %}</p>
         {% if item.recording_status == 'completed' and recording_ready %}
           <a class="btn btn-ghost mt-2" href="{% url 'market:session_recording_play' item.id %}">Play class recording</a>
@@ -20,6 +20,7 @@
         {% elif item.recording_status == 'failed' %}
           <p class="text-xs mt-2" role="status">Recording failed: {{ item.recording_error|default:"Egress or private storage could not finalize this recording." }}</p>
         {% endif %}
+        <div class="flex justify-end mt-3"><form method="post" action="{% url 'market:session_delete' item.id %}" data-confirm-title="Confirm permanent deletion" data-confirm-submit="Confirm Delete"{% if item.has_related_records %} data-confirm="This session has {{ item.booking_count }} bookings, {{ item.payment_count }} payments, and {{ item.attendance_count }} attendance records, and any related recording or classroom history. Permanently deleting it will remove the session, its bookings, attendance, and stored recording. The session will no longer be available, and associated history may be affected. Financial transactions and their audit history will be retained with the session title. Continue?"{% else %} data-confirm="Permanently delete this session? This cannot be undone."{% endif %}>{% csrf_token %}<button class="btn btn-ghost" type="submit">Delete</button></form></div>
       </article>
     {% empty %}
       <p class="text-sm" style="color:var(--txt-faint)">No sessions yet. Create your first online class with the form.</p>

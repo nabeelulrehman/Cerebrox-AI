@@ -29,7 +29,7 @@
         </div>
         <div class="course-item__actions">
           <a href="{% url 'learning:course_edit' c.id %}" class="course-item__action">Edit</a>
-          <form method="post" action="{% url 'learning:course_delete' c.id %}" onsubmit="return confirm('Delete this course and all its topics?')">
+          <form method="post" action="{% url 'learning:course_delete' c.id %}" data-confirm="Delete this course and all its topics?">
             {% csrf_token %}
             <button type="submit" class="course-item__action course-item__action--delete">Delete</button>
           </form>

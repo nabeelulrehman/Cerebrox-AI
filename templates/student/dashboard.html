@@ -58,8 +58,8 @@
   </section>
 
   <section class="dashboard-section">
-    <div class="flex justify-between items-center gap-3 mb-3"><h2 class="font-display font-semibold">Recent session payments</h2><a class="btn btn-ghost" href="{% url 'market:payment_history' %}">Payment history</a></div>
-    {% for payment in recent_payments %}<div class="glass p-3 mb-2 flex justify-between gap-3"><span>{{ payment.session.title|default:payment.resource.title }} · PKR {{ payment.amount }}</span><span class="pill">{{ payment.get_status_display }}</span></div>{% empty %}<p class="dashboard-empty">No payment activity yet.</p>{% endfor %}
+    <div class="flex justify-between items-center gap-3 mb-3"><h2 class="font-display font-semibold">Recent payments</h2><a class="btn btn-ghost" href="{% url 'market:payment_history' %}">Payment history</a></div>
+    {% for payment in recent_payments %}<div class="glass p-3 mb-2 flex justify-between gap-3"><span>{{ payment.session.title|default:payment.session_title|default:payment.resource.title|default:payment.classroom.name|default:'Payment' }} · PKR {{ payment.amount }}</span><span class="pill">{{ payment.get_status_display }}</span></div>{% empty %}<p class="dashboard-empty">No payment activity yet.</p>{% endfor %}
   </section>
 
   {% if recommendations %}

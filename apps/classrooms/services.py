@@ -30,6 +30,8 @@ def find_student(identifier: str):
 
 @transaction.atomic
 def invite_student(classroom, identifier):
+    if classroom.price > 0:
+        raise EnrollmentError('Paid classes require student payment through the join code.')
     student = find_student(identifier)
     if student is None:
         raise EnrollmentError('No registered student found with that username or email.')
@@ -57,6 +59,8 @@ def join_by_code(student, code):
     if classroom is None or classroom.enrollment_policy == Classroom.Policy.INVITE_ONLY:
         # same message for both so codes of invite-only classes can't be probed
         raise EnrollmentError('That join code is not valid.')
+    if classroom.price > 0:
+        raise EnrollmentError('Payment is required before joining this class.')
     enr, created = Enrollment.objects.select_for_update().get_or_create(
         classroom=classroom, student=student, defaults={'status': Enrollment.Status.REQUESTED})
     target = (Enrollment.Status.ACTIVE if classroom.enrollment_policy == Classroom.Policy.OPEN_CODE
@@ -80,6 +84,8 @@ def respond_to_invite(student, enrollment_id, accept: bool):
         pk=enrollment_id, student=student, status=Enrollment.Status.INVITED).first()
     if enr is None:
         raise EnrollmentError('Invitation not found.')
+    if enr.classroom.price > 0:
+        raise EnrollmentError('Payment is required before joining this class.')
     enr.status = Enrollment.Status.ACTIVE if accept else Enrollment.Status.DECLINED
     enr.responded_at = timezone.now()
     enr.save(update_fields=['status', 'responded_at'])
@@ -92,6 +98,8 @@ def teacher_decide_request(teacher, enrollment_id, approve: bool):
         pk=enrollment_id, classroom__teacher=teacher, status=Enrollment.Status.REQUESTED).first()
     if enr is None:
         raise EnrollmentError('Request not found.')
+    if approve and enr.classroom.price > 0:
+        raise EnrollmentError('Payment is required before this student can join the class.')
     enr.status = Enrollment.Status.ACTIVE if approve else Enrollment.Status.DECLINED
     enr.responded_at = timezone.now()
     enr.save(update_fields=['status', 'responded_at'])

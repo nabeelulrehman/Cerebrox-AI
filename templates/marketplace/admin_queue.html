@@ -5,7 +5,7 @@
 <p class="text-sm mb-4" style="color:var(--txt-dim)">Bank transfers require receipt and transaction reference review. Gateway payments are confirmed only by a valid provider webhook.</p>
 {% for p in payments %}
 <div class="glass p-4 mb-3 flex flex-wrap justify-between items-center gap-3">
-  <span class="text-sm">{{ p.reference }} — {{ p.student.username }} → {{ p.teacher.username }} — PKR {{ p.amount }} — {{ p.get_method_display|default:"Manual" }} — {% if p.resource %}{{ p.resource.title }}{% else %}{{ p.session.title }}{% endif %}
+  <span class="text-sm">{{ p.reference }} — {{ p.student.username }} → {{ p.teacher.username }} — PKR {{ p.amount }} — {{ p.get_method_display|default:"Manual" }} — {% if p.resource %}{{ p.resource.title }}{% elif p.session %}{{ p.session.title }}{% else %}{{ p.session_title|default:"Session" }}{% endif %}
   {% if p.transaction_reference %}<br>Transfer ref: {{ p.transaction_reference }}{% endif %}{% if p.receipt %}<br><a class="grad-text" href="{% url 'market:payment_receipt' p.id %}">View receipt</a>{% endif %}</span>
   {% if not p.method or p.method == 'bank_transfer' %}
     <form method="post" action="{% url 'market:admin_payment' p.id %}" class="flex gap-2">{% csrf_token %}<button name="decision" value="confirm" class="btn btn-primary !py-1">Confirm</button><button name="decision" value="reject" class="btn btn-ghost !py-1">Reject</button></form>

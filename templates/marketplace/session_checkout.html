@@ -1,21 +1,35 @@
 {% extends "layouts/dashboard_layout.html" %}
-{% block title %}Checkout · {{ session.title }}{% endblock %}
+{% block title %}Checkout - {{ session.title }}{% endblock %}
 {% block content %}
-<p class="mb-4"><a class="grad-text" href="{% url 'market:session_detail' session.id %}">← Back to session</a></p>
+<p class="mb-4"><a class="grad-text" href="{% url 'market:session_detail' session.id %}">Back to session</a></p>
 <section class="glass p-5 max-w-2xl">
   <h1 class="font-display text-2xl font-bold">Book {{ session.title }}</h1>
-  <p class="mt-2">Total: <strong>PKR {{ session.price }}</strong></p>
-  <h2 class="font-display text-lg font-semibold mt-5 mb-3">Choose payment method</h2>
-  <form method="post">{% csrf_token %}
-    <div class="grid gap-3">
-      {% for method in methods %}
-        <label class="glass p-4 flex gap-3 items-start {% if not method.enabled %}opacity-60{% endif %}">
-          <input type="radio" name="method" value="{{ method.code }}" {% if not method.enabled %}disabled{% endif %} required>
-          <span><strong>{{ method.label }}</strong>{% if not method.enabled %}<span class="block text-sm mt-1">Currently unavailable. {{ method.reason }}</span>{% endif %}</span>
-        </label>
+  <p class="mt-2">Amount due: <strong>PKR {{ session.price }}</strong></p>
+  <p class="text-sm mt-2" style="color:var(--txt-dim)">Pay using one of {{ session.teacher.get_full_name|default:session.teacher.username }}'s active payment methods. Your booking stays pending until the teacher verifies your payment.</p>
+  {% if teacher_payment_methods %}
+  <form method="post" enctype="multipart/form-data" class="grid gap-4 mt-5">{% csrf_token %}
+    <fieldset class="grid gap-3">
+      <legend class="label">Choose a payment method and use its account details</legend>
+      {% for method in teacher_payment_methods %}
+      <label class="glass-soft p-3 flex gap-3 items-start">
+        <input class="mt-1" type="radio" name="payment_method" value="{{ method.id }}" required>
+        <span class="block flex-1"><strong>{{ method.get_method_display }}</strong>
+          <dl class="text-sm mt-2 grid gap-1">
+            <div><dt class="inline" style="color:var(--txt-dim)">Account title: </dt><dd class="inline">{{ method.account_title }}</dd></div>
+            {% if method.bank_name %}<div><dt class="inline" style="color:var(--txt-dim)">Bank: </dt><dd class="inline">{{ method.bank_name }}</dd></div>{% endif %}
+            {% if method.account_number %}<div><dt class="inline" style="color:var(--txt-dim)">Account: </dt><dd class="inline">{{ method.account_number }}</dd></div>{% endif %}
+            {% if method.iban %}<div><dt class="inline" style="color:var(--txt-dim)">IBAN: </dt><dd class="inline">{{ method.iban }}</dd></div>{% endif %}
+          </dl>
+        </span>
+      </label>
       {% endfor %}
-    </div>
-    <button class="btn btn-primary mt-5" type="submit">Continue to payment</button>
+    </fieldset>
+    <label class="label" for="transaction_reference">Transaction ID / reference</label>
+    <input class="field" id="transaction_reference" name="transaction_reference" maxlength="100" required>
+    <label class="label" for="receipt">Payment proof (JPG, PNG, or PDF; max 5 MB)</label>
+    <input class="field" id="receipt" name="receipt" type="file" accept="image/jpeg,image/png,application/pdf" required>
+    <button class="btn btn-primary" type="submit">Submit Payment for Verification</button>
   </form>
+  {% else %}<p class="glass-soft p-4 mt-5">This teacher has not added an active payment method yet.</p>{% endif %}
 </section>
 {% endblock %}

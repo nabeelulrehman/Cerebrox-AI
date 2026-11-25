@@ -60,3 +60,26 @@ class TeacherProfile(models.Model):
         self.verified_by = admin_user
         self.verified_at = timezone.now() if status == self.Status.APPROVED else None
         self.save(update_fields=['verification_status', 'verification_note', 'verified_by', 'verified_at'])
+
+
+class TeacherPaymentMethod(models.Model):
+    class Method(models.TextChoices):
+        JAZZCASH = 'jazzcash', 'JazzCash'
+        EASYPAISA = 'easypaisa', 'Easypaisa'
+        BANK_TRANSFER = 'bank_transfer', 'Bank Transfer'
+
+    teacher = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='teacher_payment_methods', on_delete=models.CASCADE)
+    method = models.CharField(max_length=20, choices=Method.choices)
+    account_title = models.CharField(max_length=160)
+    account_number = models.CharField(max_length=100, blank=True)
+    iban = models.CharField(max_length=64, blank=True)
+    bank_name = models.CharField(max_length=160, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['method', 'account_title']
+
+    def __str__(self):
+        return f'{self.get_method_display()} for teacher {self.teacher_id}'

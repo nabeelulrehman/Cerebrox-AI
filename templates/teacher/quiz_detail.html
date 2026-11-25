@@ -86,7 +86,7 @@
     <h2 class="font-display font-semibold mb-3">Questions ({{ questions|length }})</h2>
     {% for q in questions %}<div class="py-2 border-b" style="border-color:var(--line)">
       <div class="flex justify-between gap-3"><p class="text-sm">{{ forloop.counter }}. {{ q.text }} {% if q.ai_generated %}<span class="pill">AI</span>{% endif %}</p>
-        {% if not has_attempts %}<form method="post" action="{% url 'class_quizzes:question_delete' q.id %}">{% csrf_token %}<button class="text-xs" style="color:var(--bad)">Delete</button></form>{% endif %}</div>
+        {% if not has_attempts %}<form method="post" action="{% url 'class_quizzes:question_delete' q.id %}" data-confirm="Delete this question?">{% csrf_token %}<button class="text-xs" style="color:var(--bad)">Delete</button></form>{% endif %}</div>
       <p class="text-xs" style="color:var(--txt-faint)">{{ q.get_kind_display }} &middot; {{ q.marks }} marks{% if q.kind == 'mcq' %} &middot; answer {{ q.correct_answer }}{% endif %}</p></div>
     {% empty %}<p class="text-sm" style="color:var(--txt-faint)">No questions yet.</p>{% endfor %}
   </div>

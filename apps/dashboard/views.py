@@ -20,6 +20,7 @@ def home(request):
         'weak': weak_topics.strongest_and_weakest(request.user),
         'recommendations': recommendations.recommendations_for_student(request.user, use_ai=False)[:3],
         'recent_quizzes': Quiz.objects.filter(student=request.user, completed=True).select_related('topic')[:5],
-        'recent_payments': Payment.objects.filter(student=request.user, session__isnull=False).select_related('session')[:5],
+        'recent_payments': Payment.objects.filter(student=request.user).select_related(
+            'session', 'resource', 'classroom')[:5],
     }
     return render(request, 'student/dashboard.html', context)

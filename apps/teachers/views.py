@@ -7,7 +7,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from apps.accounts.models import User
 from apps.accounts.permissions import teacher_required, verified_teacher_required
 from .forms import TeacherRegisterForm, TeacherProfileForm
-from .models import TeacherProfile
+from .models import TeacherProfile, TeacherPaymentMethod
 
 
 def teacher_register(request):
@@ -35,8 +35,12 @@ def dashboard(request):
     ctx = {'profile': profile}
     from apps.marketplace.models import Payment
     ctx['recent_session_payments'] = Payment.objects.filter(
-        teacher=request.user, session__isnull=False,
-    ).select_related('student', 'session')[:5]
+        teacher=request.user,
+    ).select_related(
+        'student', 'session', 'resource', 'classroom')[:5]
+    ctx['pending_teacher_payments'] = Payment.objects.filter(
+        teacher=request.user, is_manual_teacher_payment=True, status=Payment.Status.PENDING,
+    ).select_related('student', 'resource', 'session', 'classroom', 'teacher_payment_method').order_by('-created_at')
     if profile.is_approved:
         classes = Classroom.objects.filter(teacher=request.user, is_active=True)
         ctx.update({
@@ -51,19 +55,50 @@ def dashboard(request):
 
 @teacher_required
 def profile_edit(request):
-    profile = TeacherProfile.objects.filter(user=request.user).first()
+    # Reuse the authenticated user's reverse one-to-one cache when the menu has
+    # already loaded it; otherwise this remains a single profile lookup.
+    profile = getattr(request.user, 'teacher_profile', None)
     if profile is None:
         messages.error(
             request,
             'Your teacher profile is missing. Please contact an administrator to restore it.',
         )
         return redirect('teachers:dashboard')
-    form = TeacherProfileForm(request.POST or None, instance=profile)
-    if request.method == 'POST' and form.is_valid():
-        form.save()
-        messages.success(request, 'Teacher profile updated.')
-        return redirect('teachers:dashboard')
-    return render(request, 'teacher/profile_edit.html', {'form': form, 'profile': profile})
+    payment_method = TeacherPaymentMethod.objects.filter(teacher=request.user, is_active=True).order_by('-updated_at').first()
+    form = TeacherProfileForm(request.POST or None, instance=profile, payment_method=payment_method)
+    if request.method == 'POST':
+        if form.is_valid():
+            form.save()
+            form.save_payment_method(request.user)
+            messages.success(request, 'Teacher profile updated.')
+            return redirect('teachers:profile_edit')
+    template = 'teacher/profile_edit_fragment.html' if request.headers.get('x-requested-with') == 'XMLHttpRequest' else 'teacher/profile_edit.html'
+    return render(request, template, {'form': form, 'profile': profile})
+
+
+@verified_teacher_required
+def payment_decide(request, payment_id):
+    from django.views.decorators.http import require_POST
+    from apps.marketplace.models import Payment
+    from apps.marketplace.services import decide_teacher_payment, MarketError
+    if request.method != 'POST':
+        from django.http import HttpResponseNotAllowed
+        return HttpResponseNotAllowed(['POST'])
+    approve = request.POST.get('decision') == 'approve'
+    try:
+        payment = decide_teacher_payment(request.user, payment_id, approve=approve,
+                                         reason=request.POST.get('reason', ''))
+        from django.core.mail import send_mail
+        outcome = 'approved' if approve else 'rejected'
+        if payment.student.email:
+            send_mail(f'Payment {outcome}',
+                      f'Your payment {payment.reference} was {outcome} by your teacher.' +
+                      (f' Reason: {payment.review_note}' if payment.review_note else ''),
+                      None, [payment.student.email], fail_silently=True)
+        messages.success(request, f'Payment {outcome}.')
+    except MarketError as exc:
+        messages.error(request, str(exc))
+    return redirect('teachers:dashboard')
 
 
 # ---------- Public directory (verified teachers only) ----------

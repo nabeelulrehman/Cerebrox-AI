@@ -31,8 +31,6 @@
 
       <div data-registration-fields="teacher" {% if registration_type != 'teacher' %}hidden{% endif %}>
         <div class="flex flex-col gap-4">
-          <div><label class="label" for="id_headline">Professional headline</label>{{ teacher_form.headline }}</div>
-          <div><label class="label" for="id_bio">Short professional bio</label>{{ teacher_form.bio }}</div>
           <div><label class="label" for="id_qualifications">Qualifications</label>{{ teacher_form.qualifications }}</div>
           <div><label class="label" for="id_subjects">Subjects</label>{{ teacher_form.subjects }}<p class="text-xs mt-1" style="color:var(--txt-faint)">Enter subjects separated by commas.</p></div>
           <div><label class="label" for="id_experience_years">Years of experience</label>{{ teacher_form.experience_years }}</div>

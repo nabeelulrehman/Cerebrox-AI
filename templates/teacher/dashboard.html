@@ -29,8 +29,16 @@
     {% empty %}<p class="text-sm" style="color:var(--txt-faint)">No classes yet. Create one to invite students.</p>{% endfor %}
   </div>
   <section class="glass p-6 mt-5">
-    <div class="flex justify-between items-center gap-3 mb-3"><h2 class="font-display font-semibold">Recent session payments</h2><a class="btn btn-ghost" href="{% url 'market:payment_history' %}">Payment history</a></div>
-    {% for payment in recent_session_payments %}<div class="py-2 border-b flex justify-between gap-3" style="border-color:var(--line)"><span>{{ payment.session.title }} · {{ payment.student.get_full_name|default:payment.student.username }} · PKR {{ payment.amount }}</span><span class="pill">{{ payment.get_status_display }}</span></div>{% empty %}<p class="text-sm" style="color:var(--txt-faint)">No session payments yet.</p>{% endfor %}
+    <div class="flex justify-between items-center gap-3 mb-3"><h2 class="font-display font-semibold">Recent payments</h2><a class="btn btn-ghost" href="{% url 'market:payment_history' %}">Payment history</a></div>
+    {% for payment in recent_session_payments %}<div class="py-2 border-b flex justify-between gap-3" style="border-color:var(--line)"><span>{{ payment.session.title|default:payment.session_title|default:payment.resource.title|default:payment.classroom.name }} · {{ payment.student.get_full_name|default:payment.student.username }} · PKR {{ payment.amount }}</span><span class="pill">{{ payment.get_status_display }}</span></div>{% empty %}<p class="text-sm" style="color:var(--txt-faint)">No payments yet.</p>{% endfor %}
+  </section>
+  <section class="glass p-6 mt-5">
+    <div class="flex flex-wrap justify-between items-center gap-3 mb-3"><h2 class="font-display font-semibold">Teacher payment verification</h2><a class="btn btn-ghost" href="{% url 'market:payment_history' %}">All transactions &amp; earnings</a></div>
+    {% for payment in pending_teacher_payments %}
+      <article class="glass-soft p-4 mb-3"><div class="flex flex-wrap justify-between gap-2"><strong>{{ payment.resource.title|default:payment.session.title|default:payment.session_title|default:payment.classroom.name }}</strong><span>PKR {{ payment.amount }} · {{ payment.get_method_display }}</span></div><p class="text-sm mt-1">{{ payment.student.get_full_name|default:payment.student.username }} · Reference {{ payment.transaction_reference }}</p><a class="text-sm grad-text" href="{% url 'market:payment_receipt' payment.id %}">View submitted proof</a>
+        <div class="flex flex-wrap gap-3 mt-3"><form method="post" action="{% url 'teachers:payment_decide' payment.id %}">{% csrf_token %}<button class="btn btn-primary" name="decision" value="approve" type="submit">Approve payment</button></form><form method="post" action="{% url 'teachers:payment_decide' payment.id %}" class="flex flex-wrap gap-2">{% csrf_token %}<input type="hidden" name="decision" value="reject"><input class="field" name="reason" maxlength="500" placeholder="Required rejection reason" required><button class="btn btn-ghost" type="submit">Reject</button></form></div>
+      </article>
+    {% empty %}<p class="text-sm" style="color:var(--txt-faint)">No manual payments are waiting for review.</p>{% endfor %}
   </section>
 {% endif %}
 {% endblock %}

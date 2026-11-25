@@ -1,11 +1,12 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}Teacher registration — CerebroX AI{% endblock %}
 {% block content %}
 <div class="max-w-xl mx-auto py-10">
   <div class="glass p-8">
     <h1 class="font-display text-2xl font-bold mb-1">Register as a teacher</h1>
     <p class="text-sm mb-6" style="color:var(--txt-dim)">Teacher accounts are reviewed by an administrator before they can create classes, quizzes or appear in the public directory. Students never need a teacher to use CerebroX AI.</p>
-    <form method="post" class="flex flex-col gap-4">
+    <form method="post" class="flex flex-col gap-4" data-teacher-payment-form>
       {% csrf_token %}
       {% include "components/form_fields.html" %}
       <button class="btn btn-primary w-full mt-2" type="submit">Submit for verification</button>
@@ -17,3 +18,4 @@
   </div>
 </div>
 {% endblock %}
+{% block extra_js %}<script src="{% static 'js/teacher_payment_fields.js' %}" defer></script>{% endblock %}

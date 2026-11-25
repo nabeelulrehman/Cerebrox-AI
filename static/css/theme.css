@@ -65,6 +65,17 @@ h1,h2,h3,h4,.font-display{ font-family:'Sora',system-ui,sans-serif; letter-spaci
 .study-days-list input[type="checkbox"]{ width:1rem; height:1rem; flex:0 0 auto; margin:0; accent-color:#7041c3; }
 .email-reminder-row{ display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:.65rem .85rem; border:1px solid var(--line); border-radius:10px; background:var(--fill); color:var(--txt-dim); }
 .email-reminder-row .field{ width:1rem; height:1rem; flex:0 0 auto; margin:0; padding:0; accent-color:#7041c3; }
+.teacher-guidance-row{ display:flex; align-items:center; justify-content:space-between; gap:1rem; }
+.teacher-guidance-row .label{ margin:0; }
+.teacher-guidance-row input[type="checkbox"].field{ width:1rem; height:1rem; flex:0 0 auto; margin:0; padding:0; accent-color:#7041c3; }
+.action-confirm-dialog{ width:min(calc(100% - 2rem), 27rem); max-width:none; margin:auto; padding:0; border:0; background:transparent; color:var(--txt); }
+.action-confirm-dialog::backdrop{ background:rgba(18,14,30,.62); backdrop-filter:blur(3px); }
+.action-confirm-panel{ padding:1.35rem; border:1px solid var(--line); border-radius:16px; background:var(--panel); box-shadow:0 24px 70px rgba(24,18,42,.35); }
+.action-confirm-panel h2{ margin:0; font-family:var(--font-display,'Sora',sans-serif); font-size:1.1rem; font-weight:700; }
+.action-confirm-panel p{ margin:.65rem 0 1.2rem; color:var(--txt-dim); font-size:.9rem; }
+.action-confirm-actions{ display:flex; justify-content:flex-end; gap:.6rem; }
+.action-confirm-submit{ background:var(--bad); color:#fff; }
+.action-confirm-submit:hover{ opacity:.9; }
 select.field option{ background:#fff; color:var(--txt); }
 .label{ font-size:.78rem; color:var(--txt-dim); margin-bottom:.35rem; display:block; }
 .pill{ display:inline-flex; align-items:center; padding:.2rem .6rem; border-radius:999px; font-size:.72rem; font-weight:600; border:1px solid var(--line); }
@@ -135,7 +146,7 @@ select.field option{ background:#fff; color:var(--txt); }
   .site-avatar{ width:2.25rem; height:2.25rem; }
 }
 @media(max-width:767px){
-  .dashboard-body .site-mobile-menu{ display:grid; }
+  .site-mobile-menu{ display:grid; }
   .site-profile-name{ display:none; }
   .site-profile-menu{ gap:0; }
 }

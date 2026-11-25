@@ -12,12 +12,13 @@ from datetime import timedelta
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.core.paginator import Paginator
-from django.db.models import Avg, Count, F, IntegerField, OuterRef, Q, Subquery, Value, Window
+from django.db.models import Avg, Count, F, IntegerField, OuterRef, Q, Subquery, Value, Window, Sum
 from django.db.models.functions import Coalesce
 from django.db.models.functions.window import RowNumber
 from django.shortcuts import render, get_object_or_404, redirect
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_POST
 
 from .permissions import admin_required
@@ -25,10 +26,65 @@ from apps.classrooms.models import Enrollment
 from apps.learning.models import Course, Topic
 from apps.quizzes.models import Quiz
 from apps.teachers.models import TeacherProfile
-from apps.marketplace.models import Payment, Review, TeachingSession
+from apps.marketplace.models import Payment, Review, TeachingSession, CommissionSettings
 from apps.analytics import performance, weak_topics
 
 User = get_user_model()
+
+
+@admin_required
+def payment_reports(request):
+    payments = Payment.objects.select_related('student', 'teacher', 'resource', 'session', 'classroom').all()
+    status = request.GET.get('status', '')
+    teacher_id = request.GET.get('teacher', '')
+    student_id = request.GET.get('student', '')
+    date_from = request.GET.get('from', '')
+    date_to = request.GET.get('to', '')
+    if status in Payment.Status.values:
+        payments = payments.filter(status=status)
+    if teacher_id.isdigit():
+        payments = payments.filter(teacher_id=teacher_id)
+    if student_id.isdigit():
+        payments = payments.filter(student_id=student_id)
+    parsed_from = parse_date(date_from) if date_from else None
+    parsed_to = parse_date(date_to) if date_to else None
+    if parsed_from:
+        payments = payments.filter(created_at__date__gte=parsed_from)
+    if parsed_to:
+        payments = payments.filter(created_at__date__lte=parsed_to)
+    all_payments = Payment.objects.all()
+    return render(request, 'admin/payment_reports.html', {
+        'payments': payments[:300], 'status': status, 'teacher_id': teacher_id, 'student_id': student_id,
+        'status_choices': Payment.Status.choices,
+        'date_from': date_from, 'date_to': date_to,
+        'teachers': User.objects.filter(role=User.Role.TEACHER).order_by('username'),
+        'students': User.objects.filter(role=User.Role.STUDENT).order_by('username'),
+        'gross': all_payments.filter(status=Payment.Status.CONFIRMED).aggregate(v=Sum('amount'))['v'] or 0,
+        'commission': all_payments.filter(status=Payment.Status.CONFIRMED).aggregate(v=Sum('platform_commission'))['v'] or 0,
+        'earnings': all_payments.filter(status=Payment.Status.CONFIRMED).aggregate(v=Sum('teacher_earning'))['v'] or 0,
+        'pending_count': all_payments.filter(status=Payment.Status.PENDING).count(),
+        'approved_count': all_payments.filter(status=Payment.Status.CONFIRMED).count(),
+        'rejected_count': all_payments.filter(status=Payment.Status.REJECTED).count(),
+        'commission_rate': CommissionSettings.objects.filter(pk=1).first(),
+    })
+
+
+@admin_required
+@require_POST
+def commission_update(request):
+    from decimal import Decimal, InvalidOperation
+    try:
+        value = Decimal(request.POST.get('percentage', '').strip())
+        if not value.is_finite() or value < 0 or value > 100 or value.as_tuple().exponent < -2:
+            raise InvalidOperation
+        settings_obj, _ = CommissionSettings.objects.get_or_create(pk=1)
+        settings_obj.percentage = value
+        settings_obj.updated_by = request.user
+        settings_obj.save(update_fields=['percentage', 'updated_by', 'updated_at'])
+        messages.success(request, 'Commission rate updated. Existing payments retain their recorded rate.')
+    except (InvalidOperation, ValueError):
+        messages.error(request, 'Enter a commission percentage between 0 and 100, with up to 2 decimal places.')
+    return redirect('admin_panel:payment_reports')
 
 
 @admin_required

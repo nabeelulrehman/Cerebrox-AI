@@ -3,10 +3,11 @@
 {% block content %}
 <section class="glass p-5 max-w-2xl">
   <h1 class="font-display text-2xl font-bold">Payment status</h1>
-  <p class="mt-3">Session: {{ payment.session.title }}</p>
+  <p class="mt-3">{% if payment.session %}Session: {{ payment.session.title }}{% elif payment.session_title %}Session: {{ payment.session_title }}{% elif payment.resource %}Resource: {{ payment.resource.title }}{% elif payment.classroom %}Class: {{ payment.classroom.name }}{% endif %}</p>
   <p>Reference: {{ payment.reference }}</p>
+  <p>Payment channel: {% if payment.is_manual_teacher_payment %}Direct teacher transfer{% elif payment.method == 'stripe' %}Stripe gateway{% else %}Platform payment review{% endif %}</p>
   <p>Status: <strong>{{ payment.get_status_display }}</strong></p>
-  {% if payment.status == 'pending' %}<p class="mt-3">We are waiting for verified payment confirmation. Your booking is not active until then.</p>{% elif payment.status == 'confirmed' %}<a class="btn btn-primary mt-4" href="{% url 'market:session_detail' payment.session_id %}">View booking</a>{% endif %}
+  {% if payment.status == 'pending' %}<p class="mt-3">We are waiting for teacher verification. Paid access is not active until then.</p>{% elif payment.status == 'confirmed' and payment.session_id %}<a class="btn btn-primary mt-4" href="{% url 'market:session_detail' payment.session_id %}">View booking</a>{% elif payment.status == 'confirmed' and payment.classroom_id %}<a class="btn btn-primary mt-4" href="{% url 'classrooms:student_class' payment.classroom_id %}">Open class</a>{% endif %}
   <a class="btn btn-ghost mt-4" href="{% url 'market:payment_history' %}">Payment history</a>
 </section>
 {% endblock %}

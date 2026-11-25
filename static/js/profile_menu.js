@@ -61,11 +61,17 @@
       .find((script) => /cropper(?:\.min)?\.js/.test(script.src));
     const cropScript = [...page.querySelectorAll('script[src]')]
       .find((script) => /profile_avatar_crop\.js/.test(script.src));
+    const paymentFieldsScript = [...page.querySelectorAll('script[src]')]
+      .find((script) => /teacher_payment_fields\.js/.test(script.src));
 
     if (cropperScript && typeof window.Cropper !== 'function') await loadScript(cropperScript.src);
     if (cropScript) {
       await loadScript(cropScript.src);
       window.initializeProfileAvatarCrop?.(dialogContent);
+    }
+    if (paymentFieldsScript) {
+      await loadScript(paymentFieldsScript.src);
+      window.initializeTeacherPaymentFields?.(dialogContent);
     }
   };
 

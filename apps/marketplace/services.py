@@ -21,7 +21,10 @@ from livekit.protocol import egress
 from livekit.protocol.webhook import WebhookEvent
 
 from apps.classrooms.models import Enrollment
-from .models import Resource, Payment, TeachingSession, SessionBooking, SessionAttendance, Review
+from .models import (
+    Resource, Payment, TeachingSession, SessionBooking, SessionAttendance, Review,
+    CommissionSettings, PaymentStatusAudit,
+)
 
 ALLOWED_EXT = {'.pdf', '.ppt', '.pptx', '.doc', '.docx', '.txt', '.png', '.jpg', '.jpeg', '.gif', '.mp4', '.webm', '.zip'}
 # html/svg/js are deliberately excluded: they could run script if ever rendered inline.
@@ -29,6 +32,16 @@ ALLOWED_EXT = {'.pdf', '.ppt', '.pptx', '.doc', '.docx', '.txt', '.png', '.jpg',
 
 class MarketError(Exception):
     pass
+
+
+def _snapshot_commission(payment):
+    from decimal import Decimal, ROUND_HALF_UP
+    settings_row = CommissionSettings.objects.filter(pk=1).first()
+    rate = settings_row.percentage if settings_row else Decimal('0')
+    commission = (payment.amount * rate / Decimal('100')).quantize(Decimal('.01'), rounding=ROUND_HALF_UP)
+    payment.commission_percentage = rate
+    payment.platform_commission = commission
+    payment.teacher_earning = payment.amount - commission
 
 
 def is_session_class_student(student, session):
@@ -432,6 +445,23 @@ def stop_livekit_recording(session):
     return session
 
 
+def delete_livekit_recording(session):
+    key = session.recording_key
+    if not key:
+        return
+    if not key.startswith(f'recordings/session-{session.pk}/'):
+        raise MarketError('Recording storage key does not belong to this session.')
+    from botocore.exceptions import BotoCoreError, ClientError
+    try:
+        _recording_storage_client().delete_object(
+            Bucket=settings.LIVEKIT_RECORDING_S3_BUCKET,
+            Key=key,
+        )
+    except (BotoCoreError, ClientError) as exc:
+        logger.exception('Could not delete private recording for session %s', session.pk)
+        raise MarketError('The session recording could not be safely removed from storage.') from exc
+
+
 def livekit_recording_url(session):
     if not livekit_recording_ready() or session.recording_status != TeachingSession.RecordingStatus.COMPLETED:
         raise MarketError('No completed recording is available.')
@@ -524,8 +554,10 @@ def request_purchase(student, resource):
         raise MarketError('You already own this resource.')
     try:
         with transaction.atomic():
-            return Payment.objects.create(student=student, teacher=resource.teacher, resource=resource,
-                                          amount=resource.price)
+            payment = Payment(student=student, teacher=resource.teacher, resource=resource, amount=resource.price)
+            _snapshot_commission(payment)
+            payment.save()
+            return payment
     except IntegrityError:
         raise MarketError('You already have a purchase request for this resource.')
 
@@ -535,6 +567,8 @@ def decide_payment(admin, payment_id, confirm: bool):
     p = Payment.objects.select_for_update().filter(pk=payment_id, status=Payment.Status.PENDING).first()
     if p is None:
         raise MarketError('Payment not found or already decided.')
+    if p.is_manual_teacher_payment:
+        raise MarketError('Teacher-to-student payments can only be verified by their owning teacher.')
     if p.method and p.method != Payment.Method.BANK_TRANSFER and p.session_id:
         raise MarketError('Gateway payments are decided only by the verified provider webhook.')
     if confirm and p.method == Payment.Method.BANK_TRANSFER and not (
@@ -543,16 +577,165 @@ def decide_payment(admin, payment_id, confirm: bool):
         raise MarketError('A bank transfer cannot be approved before its receipt and transaction reference are submitted.')
     if p.method == Payment.Method.BANK_TRANSFER:
         p.reviewed_at, p.reviewed_by = timezone.now(), admin
+    old_status = p.status
     p.status = Payment.Status.CONFIRMED if confirm else Payment.Status.REJECTED
     p.confirmed_at, p.confirmed_by = timezone.now(), admin
     fields = ['status', 'confirmed_at', 'confirmed_by']
     if p.method == Payment.Method.BANK_TRANSFER:
         fields += ['reviewed_at', 'reviewed_by']
     p.save(update_fields=fields)
+    PaymentStatusAudit.objects.create(payment=p, actor=admin, old_status=old_status,
+                                      new_status=p.status, note=p.review_note)
     if p.session_id:
         SessionBooking.objects.filter(session_id=p.session_id, student=p.student).update(
             status=SessionBooking.Status.CONFIRMED if confirm else SessionBooking.Status.CANCELLED)
     return p
+
+
+@transaction.atomic
+def submit_teacher_payment(student, *, resource=None, session=None, classroom=None, payment_method=None,
+                           transaction_reference='', receipt=None):
+    from decimal import Decimal, ROUND_HALF_UP
+    from apps.teachers.models import TeacherPaymentMethod
+    targets = [resource, session, classroom]
+    if not student.is_student or sum(item is not None for item in targets) != 1:
+        raise MarketError('Invalid payment request.')
+    target = resource or session or classroom
+    teacher = target.teacher
+    if not payment_method or payment_method.teacher_id != teacher.pk or not payment_method.is_active:
+        raise MarketError('That teacher payment method is unavailable.')
+    if resource and (resource.visibility != Resource.Visibility.PAID or has_confirmed_payment(student, resource)):
+        raise MarketError('This resource is not available for purchase.')
+    if session and (session.price <= 0 or is_session_class_student(student, session)):
+        raise MarketError('This session is not available for paid booking.')
+    if classroom and (classroom.price <= 0 or not classroom.is_active
+                      or classroom.enrollment_policy == 'invite_only'
+                      or classroom.enrollments.filter(student=student, status='active').exists()):
+        raise MarketError('This class is not available for paid enrollment.')
+    ref = transaction_reference.strip().upper()
+    if not ref or len(ref) > 100 or receipt is None:
+        raise MarketError('Enter the transaction reference and upload a payment receipt.')
+    if receipt.size > 5 * 1024 * 1024:
+        raise MarketError('Receipt must be no larger than 5 MB.')
+    header = receipt.read(8)
+    receipt.seek(0)
+    if not (header.startswith(b'%PDF-') or header.startswith(b'\x89PNG\r\n\x1a\n') or header.startswith(b'\xff\xd8\xff')):
+        raise MarketError('Upload a valid JPG, PNG, or PDF receipt.')
+    if Payment.objects.filter(transaction_reference__iexact=ref).exists():
+        raise MarketError('That transaction reference was already submitted.')
+    amount = target.price
+    if not getattr(getattr(teacher, 'teacher_profile', None), 'is_approved', False):
+        raise MarketError('This teacher is not currently approved to accept payments.')
+    if session:
+        session = TeachingSession.objects.select_for_update().get(pk=session.pk)
+        if session.access_type not in (TeachingSession.AccessType.PUBLIC_ONLY,
+                                       TeachingSession.AccessType.CLASS_PUBLIC):
+            raise MarketError('This session is only available to enrolled class students.')
+        sync_session_status(session)
+        if session.status != TeachingSession.Status.UPCOMING or session.starts_at <= timezone.now():
+            raise MarketError('This session is no longer accepting bookings.')
+        booking = SessionBooking.objects.select_for_update().filter(session=session, student=student).first()
+        if booking and booking.status == SessionBooking.Status.CONFIRMED:
+            raise MarketError('You already booked this session.')
+        occupied = session.bookings.exclude(status=SessionBooking.Status.CANCELLED)
+        if booking:
+            occupied = occupied.exclude(pk=booking.pk)
+        if occupied.count() >= session.capacity:
+            raise MarketError('This session is full.')
+    current = CommissionSettings.objects.filter(pk=1).first()
+    rate = current.percentage if current else Decimal('0')
+    commission = (amount * rate / Decimal('100')).quantize(Decimal('.01'), rounding=ROUND_HALF_UP)
+    try:
+        with transaction.atomic():
+            payment = Payment.objects.select_for_update().filter(
+                student=student, resource=resource, session=session, classroom=classroom,
+                status=Payment.Status.PENDING,
+            ).first()
+            if (payment and session and not payment.is_manual_teacher_payment and payment.method
+                    and not payment.transaction_reference and not payment.receipt):
+                old_status = payment.status
+                payment.status = Payment.Status.REJECTED
+                payment.save(update_fields=['status'])
+                PaymentStatusAudit.objects.create(
+                    payment=payment, actor=student, old_status=old_status,
+                    new_status=payment.status,
+                    note='Replaced an unfinished platform checkout with a teacher payment submission.',
+                )
+                payment = None
+            if payment:
+                if payment.is_manual_teacher_payment or payment.method or payment.transaction_reference or payment.receipt:
+                    raise MarketError('A payment request already exists for this item.')
+                payment.method = payment_method.method
+                payment.teacher_payment_method = payment_method
+                payment.amount = amount
+                payment.transaction_reference = ref
+                payment.receipt = receipt
+                payment.is_manual_teacher_payment = True
+                payment.commission_percentage = rate
+                payment.platform_commission = commission
+                payment.teacher_earning = amount - commission
+                payment.save(update_fields=['amount', 'method', 'teacher_payment_method', 'transaction_reference', 'receipt',
+                    'is_manual_teacher_payment', 'commission_percentage', 'platform_commission', 'teacher_earning'])
+            else:
+                payment = Payment.objects.create(
+                    student=student, teacher=teacher, resource=resource, session=session, classroom=classroom, amount=amount,
+                    method=payment_method.method, teacher_payment_method=payment_method,
+                    transaction_reference=ref, receipt=receipt, is_manual_teacher_payment=True,
+                    commission_percentage=rate, platform_commission=commission,
+                    teacher_earning=amount - commission,
+                )
+    except MarketError:
+        raise
+    except IntegrityError as exc:
+        raise MarketError('That reference or purchase request already exists.') from exc
+    if session:
+        booking, _ = SessionBooking.objects.get_or_create(session=session, student=student,
+            defaults={'status': SessionBooking.Status.PENDING_PAYMENT})
+        if booking.status == SessionBooking.Status.CONFIRMED:
+            raise MarketError('You already booked this session.')
+        booking.status = SessionBooking.Status.PENDING_PAYMENT
+        booking.save(update_fields=['status'])
+    if classroom:
+        Enrollment.objects.get_or_create(classroom=classroom, student=student,
+            defaults={'status': Enrollment.Status.REQUESTED})
+    PaymentStatusAudit.objects.create(payment=payment, actor=student,
+        old_status=Payment.Status.PENDING, new_status=Payment.Status.PENDING,
+        note='Manual teacher payment submitted; awaiting teacher verification.')
+    return payment
+
+
+@transaction.atomic
+def decide_teacher_payment(teacher, payment_id, *, approve, reason=''):
+    payment = Payment.objects.select_for_update().filter(
+        pk=payment_id, teacher=teacher, is_manual_teacher_payment=True, status=Payment.Status.PENDING,
+    ).first()
+    if payment is None:
+        raise MarketError('Payment not found or already decided.')
+    reason = reason.strip()
+    if not approve and not reason:
+        raise MarketError('A rejection reason is required.')
+    old_status = payment.status
+    payment.status = Payment.Status.CONFIRMED if approve else Payment.Status.REJECTED
+    payment.reviewed_at = timezone.now()
+    payment.reviewed_by = teacher
+    payment.confirmed_at = timezone.now() if approve else None
+    payment.confirmed_by = teacher if approve else None
+    payment.review_note = reason[:500]
+    payment.save(update_fields=['status', 'reviewed_at', 'reviewed_by', 'confirmed_at', 'confirmed_by', 'review_note'])
+    PaymentStatusAudit.objects.create(payment=payment, actor=teacher, old_status=old_status,
+                                      new_status=payment.status, note=reason[:500])
+    if payment.session_id:
+        SessionBooking.objects.filter(session_id=payment.session_id, student=payment.student,
+            status=SessionBooking.Status.PENDING_PAYMENT).update(
+                status=SessionBooking.Status.CONFIRMED if approve else SessionBooking.Status.CANCELLED)
+    if payment.classroom_id and approve:
+        Enrollment.objects.update_or_create(classroom_id=payment.classroom_id, student=payment.student,
+            defaults={'status': Enrollment.Status.ACTIVE, 'responded_at': timezone.now()})
+    elif payment.classroom_id:
+        Enrollment.objects.filter(classroom_id=payment.classroom_id, student=payment.student,
+            status=Enrollment.Status.REQUESTED).update(status=Enrollment.Status.DECLINED,
+                                                       responded_at=timezone.now())
+    return payment
 
 
 @transaction.atomic
@@ -591,8 +774,10 @@ def create_public_session_payment(student, session, method):
         payment.method = method
         payment.save(update_fields=['method'])
     else:
-        payment = Payment.objects.create(student=student, teacher=session.teacher, session=session,
-                                         amount=session.price, method=method)
+        payment = Payment(student=student, teacher=session.teacher, session=session,
+                          session_title=session.title, amount=session.price, method=method)
+        _snapshot_commission(payment)
+        payment.save()
     if booking is None:
         SessionBooking.objects.create(session=session, student=student,
                                       status=SessionBooking.Status.PENDING_PAYMENT)
@@ -631,7 +816,7 @@ def submit_bank_transfer(payment, student, transaction_reference, receipt):
 def confirm_provider_payment(payment_reference, provider_session_id, amount_minor, currency, provider_reference):
     payment = Payment.objects.select_for_update().filter(
         reference=payment_reference, method=Payment.Method.STRIPE,
-        status=Payment.Status.PENDING, session__isnull=False,
+        status=Payment.Status.PENDING,
     ).first()
     if payment is None:
         return False
@@ -639,14 +824,18 @@ def confirm_provider_payment(payment_reference, provider_session_id, amount_mino
     if (payment.provider_session_id != provider_session_id or amount_minor != expected_minor
             or currency.lower() != 'pkr'):
         return False
+    old_status = payment.status
     payment.status = Payment.Status.CONFIRMED
     payment.confirmed_at = timezone.now()
     payment.provider_reference = provider_reference[:128]
     payment.save(update_fields=['status', 'confirmed_at', 'provider_reference'])
-    SessionBooking.objects.filter(session=payment.session, student=payment.student,
-                                  status=SessionBooking.Status.PENDING_PAYMENT).update(
-        status=SessionBooking.Status.CONFIRMED,
-    )
+    PaymentStatusAudit.objects.create(payment=payment, actor=None, old_status=old_status,
+                                      new_status=payment.status, note='Verified by Stripe webhook.')
+    if payment.session_id:
+        SessionBooking.objects.filter(session_id=payment.session_id, student=payment.student,
+                                      status=SessionBooking.Status.PENDING_PAYMENT).update(
+            status=SessionBooking.Status.CONFIRMED,
+        )
     return True
 
 
@@ -654,17 +843,21 @@ def confirm_provider_payment(payment_reference, provider_session_id, amount_mino
 def reject_provider_payment(payment_reference, provider_session_id):
     payment = Payment.objects.select_for_update().filter(
         reference=payment_reference, method=Payment.Method.STRIPE,
-        status=Payment.Status.PENDING, session__isnull=False,
+        status=Payment.Status.PENDING,
         provider_session_id=provider_session_id,
     ).first()
     if payment is None:
         return False
+    old_status = payment.status
     payment.status = Payment.Status.REJECTED
     payment.save(update_fields=['status'])
-    SessionBooking.objects.filter(session=payment.session, student=payment.student,
-                                  status=SessionBooking.Status.PENDING_PAYMENT).update(
-        status=SessionBooking.Status.CANCELLED,
-    )
+    PaymentStatusAudit.objects.create(payment=payment, actor=None, old_status=old_status,
+                                      new_status=payment.status, note='Rejected by Stripe webhook.')
+    if payment.session_id:
+        SessionBooking.objects.filter(session_id=payment.session_id, student=payment.student,
+                                      status=SessionBooking.Status.PENDING_PAYMENT).update(
+            status=SessionBooking.Status.CANCELLED,
+        )
     return True
 
 
@@ -715,7 +908,10 @@ def book_session(student, session):
         booking.status = status
         booking.save(update_fields=['status'])
     if status == SessionBooking.Status.PENDING_PAYMENT:
-        Payment.objects.create(student=student, teacher=session.teacher, session=session, amount=session.price)
+        payment = Payment(student=student, teacher=session.teacher, session=session,
+                          session_title=session.title, amount=session.price)
+        _snapshot_commission(payment)
+        payment.save()
     return booking
 
 
@@ -783,6 +979,17 @@ def cancel_session_booking(student, session):
         session=session, student=student, status=Payment.Status.PENDING,
     ).update(status=Payment.Status.REJECTED, confirmed_at=timezone.now())
     return booking
+
+
+def notify_session_deletion(title, starts_at, recipients):
+    scheduled_for = timezone.localtime(starts_at).strftime('%Y-%m-%d %H:%M')
+    send_mail(
+        f'Session deleted: {title}',
+        f'{title} scheduled for {scheduled_for} was permanently deleted by the teacher. '
+        'Its session and attendance history are no longer available.',
+        settings.DEFAULT_FROM_EMAIL,
+        recipients,
+    )
 
 
 def notify_session_bookings(session, subject, body):

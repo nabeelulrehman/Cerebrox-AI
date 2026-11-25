@@ -43,7 +43,7 @@
         <form method="post" action="{% url 'market:session_end' session.id %}">{% csrf_token %}<button class="btn btn-primary">End Class</button></form>
       {% endif %}
       {% if session.status == 'upcoming' or session.status == 'ongoing' %}
-        <form method="post" action="{% url 'market:session_cancel' session.id %}" onsubmit="return confirm('Cancel this session and notify booked students?');">{% csrf_token %}<button class="btn btn-ghost">Cancel Session</button></form>
+        <form method="post" action="{% url 'market:session_cancel' session.id %}" data-confirm="Cancel this session and notify booked students?">{% csrf_token %}<button class="btn btn-ghost">Cancel Session</button></form>
       {% endif %}
     {% elif can_book %}
       <form method="post" action="{% url 'market:session_book' session.id %}">{% csrf_token %}<button class="btn btn-primary">{% if class_student %}Join this class for free{% else %}Book for PKR {{ session.price }}{% endif %}</button></form>
