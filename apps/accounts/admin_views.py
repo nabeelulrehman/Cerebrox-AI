@@ -25,8 +25,10 @@ from .permissions import admin_required
 from apps.classrooms.models import Enrollment
 from apps.learning.models import Course, Topic
 from apps.quizzes.models import Quiz
-from apps.teachers.models import TeacherProfile
-from apps.marketplace.models import Payment, Review, TeachingSession, CommissionSettings
+from apps.teachers.models import TeacherProfile, TeacherPaymentMethod
+from apps.marketplace.models import (
+    Payment, PaymentMethodConfiguration, Review, TeachingSession, CommissionSettings,
+)
 from apps.analytics import performance, weak_topics
 
 User = get_user_model()
@@ -34,7 +36,24 @@ User = get_user_model()
 
 @admin_required
 def payment_reports(request):
-    payments = Payment.objects.select_related('student', 'teacher', 'resource', 'session', 'classroom').all()
+    if request.method == 'POST' and request.POST.get('section') == 'platform_payment_settings':
+        config, _ = PaymentMethodConfiguration.objects.get_or_create(pk=1)
+        config.jazzcash_enabled = request.POST.get('jazzcash_enabled') == 'on'
+        config.easypaisa_enabled = request.POST.get('easypaisa_enabled') == 'on'
+        config.bank_transfer_enabled = request.POST.get('bank_transfer_enabled') == 'on'
+        config.stripe_enabled = request.POST.get('stripe_enabled') == 'on'
+        config.bank_account_title = request.POST.get('bank_account_title', '').strip()[:160]
+        config.bank_name = request.POST.get('bank_name', '').strip()[:160]
+        config.bank_iban = request.POST.get('bank_iban', '').strip()[:64]
+        config.bank_raast_id = request.POST.get('bank_raast_id', '').strip()[:100]
+        config.bank_instructions = request.POST.get('bank_instructions', '').strip()
+        config.save()
+        messages.success(request, 'Platform payment settings updated.')
+        return redirect(f"{reverse('admin_panel:payment_reports')}#platform-settings")
+
+    payments = Payment.objects.select_related(
+        'student', 'teacher', 'resource', 'session', 'classroom',
+    ).prefetch_related('status_audits__actor').all()
     status = request.GET.get('status', '')
     teacher_id = request.GET.get('teacher', '')
     student_id = request.GET.get('student', '')
@@ -55,6 +74,16 @@ def payment_reports(request):
     all_payments = Payment.objects.all()
     return render(request, 'admin/payment_reports.html', {
         'payments': payments[:300], 'status': status, 'teacher_id': teacher_id, 'student_id': student_id,
+        'pending_verifications': Payment.objects.filter(status=Payment.Status.PENDING).select_related(
+            'student', 'teacher', 'resource', 'session', 'classroom',
+        ).order_by('-created_at'),
+        'teacher_payment_methods': TeacherPaymentMethod.objects.select_related('teacher').order_by(
+            'teacher__username', 'method', 'account_title',
+        ),
+        'payment_config': PaymentMethodConfiguration.objects.filter(pk=1).first(),
+        'reviews': Review.objects.filter(status=Review.Status.PENDING).select_related(
+            'student', 'teacher',
+        ).order_by('-pk'),
         'status_choices': Payment.Status.choices,
         'date_from': date_from, 'date_to': date_to,
         'teachers': User.objects.filter(role=User.Role.TEACHER).order_by('username'),
@@ -84,7 +113,7 @@ def commission_update(request):
         messages.success(request, 'Commission rate updated. Existing payments retain their recorded rate.')
     except (InvalidOperation, ValueError):
         messages.error(request, 'Enter a commission percentage between 0 and 100, with up to 2 decimal places.')
-    return redirect('admin_panel:payment_reports')
+    return redirect(f"{reverse('admin_panel:payment_reports')}#commission")
 
 
 @admin_required
@@ -175,8 +204,8 @@ def admin_dashboard(request):
         ],
         'pending_cards': [
             {'icon': '♟', 'title': 'Teachers awaiting approval', 'value': pending_teachers, 'url': reverse('admin_panel:teachers'), 'link': 'View details'},
-            {'icon': '¤', 'title': 'Pending payment verification', 'value': pending_payments, 'url': reverse('market:admin_queue'), 'link': 'View details'},
-            {'icon': '☆', 'title': 'Pending reviews', 'value': pending_reviews, 'url': reverse('market:admin_queue'), 'link': 'View details'},
+            {'icon': '¤', 'title': 'Pending payment verification', 'value': pending_payments, 'url': reverse('admin_panel:payment_reports') + '#verification', 'link': 'View details'},
+            {'icon': '☆', 'title': 'Pending reviews', 'value': pending_reviews, 'url': reverse('admin_panel:payment_reports') + '#reviews', 'link': 'View details'},
         ],
         'classroom_cards': [
             {'icon': '●', 'title': 'Active Sessions', 'value': session_counts.get(TeachingSession.Status.ONGOING, 0), 'description': 'Currently ongoing'},

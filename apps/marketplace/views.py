@@ -1125,10 +1125,7 @@ def review_create(request, teacher_id):
 
 @admin_required
 def admin_queue(request):
-    return render(request, 'marketplace/admin_queue.html', {
-        'payments': Payment.objects.filter(status=Payment.Status.PENDING, is_manual_teacher_payment=False)
-            .select_related('student', 'teacher', 'resource', 'session', 'classroom'),
-        'reviews': Review.objects.filter(status=Review.Status.PENDING).select_related('student', 'teacher')})
+    return redirect('admin_panel:payment_reports')
 
 
 @admin_required
@@ -1139,7 +1136,7 @@ def admin_payment(request, payment_id):
         messages.success(request, 'Payment updated.')
     except MarketError as exc:
         messages.error(request, str(exc))
-    return redirect('market:admin_queue')
+    return redirect(f"{reverse('admin_panel:payment_reports')}#verification")
 
 
 @admin_required
@@ -1148,4 +1145,4 @@ def admin_review(request, review_id):
     r = get_object_or_404(Review, pk=review_id)
     r.status = Review.Status.APPROVED if request.POST.get('decision') == 'approve' else Review.Status.REJECTED
     r.save(update_fields=['status'])
-    return redirect('market:admin_queue')
+    return redirect(f"{reverse('admin_panel:payment_reports')}#reviews")
