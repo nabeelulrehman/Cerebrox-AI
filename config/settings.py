@@ -7,17 +7,22 @@ from urllib.parse import unquote, urlparse, parse_qsl
 from dotenv import dotenv_values, load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+IS_VERCEL = os.environ.get('VERCEL', '').strip().lower() in {'1', 'true', 'yes', 'on'}
+PRODUCTION_SECURITY_CHECKS = (
+    os.environ.get('DJANGO_PRODUCTION_SECURITY_CHECKS', '').strip().lower()
+    in {'1', 'true', 'yes', 'on'}
+)
+IS_PRODUCTION_CONFIGURATION = IS_VERCEL or PRODUCTION_SECURITY_CHECKS
 ENV_FILE = BASE_DIR / '.env'
 if not ENV_FILE.is_file() and (BASE_DIR / 'env').is_file():
     ENV_FILE = BASE_DIR / 'env'
-_DOTENV_VALUES = dotenv_values(ENV_FILE)
-IS_VERCEL = os.environ.get('VERCEL', '').strip().lower() in {'1', 'true', 'yes', 'on'}
+_DOTENV_VALUES = {} if IS_PRODUCTION_CONFIGURATION else dotenv_values(ENV_FILE)
 
 
 def _environment_value(name, default=''):
     """Prefer an explicitly supplied environment value, but let .env fill blanks."""
     value = os.environ.get(name)
-    if IS_VERCEL:
+    if IS_PRODUCTION_CONFIGURATION:
         return default if value is None else value
     if value is None or not value.strip():
         value = _DOTENV_VALUES.get(name)
@@ -32,7 +37,7 @@ def _normalize_gemini_api_key(value):
 
 
 _PROCESS_GEMINI_API_KEY = _normalize_gemini_api_key(os.environ.get('GEMINI_API_KEY'))
-_DOTENV_GEMINI_API_KEY = _normalize_gemini_api_key(
+_DOTENV_GEMINI_API_KEY = '' if IS_PRODUCTION_CONFIGURATION else _normalize_gemini_api_key(
     _DOTENV_VALUES.get('GEMINI_API_KEY')
 )
 if not IS_VERCEL:
@@ -46,7 +51,7 @@ def _env_bool(name, default=False):
 # never from a developer's local .env file.
 DEBUG = (
     os.environ.get('DEBUG', 'False').strip().lower() in {'1', 'true', 'yes', 'on'}
-    if IS_VERCEL else True
+    if IS_PRODUCTION_CONFIGURATION else True
 )
 SECRET_KEY = _environment_value('SECRET_KEY', 'django-insecure-change-this-in-production')
 configured_allowed_hosts = _environment_value('ALLOWED_HOSTS', '127.0.0.1,localhost')
@@ -56,13 +61,13 @@ ALLOWED_HOSTS = [host.strip() for host in _environment_value(
 vercel_hostname = os.environ.get('VERCEL_URL', '').strip()
 if vercel_hostname and vercel_hostname not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append(vercel_hostname)
-if IS_VERCEL and not configured_allowed_hosts.strip():
+if IS_PRODUCTION_CONFIGURATION and not configured_allowed_hosts.strip():
     raise RuntimeError('Set exact production hostnames in ALLOWED_HOSTS for Vercel.')
-if IS_VERCEL and any(host.startswith('.') or '*' in host for host in ALLOWED_HOSTS):
+if IS_PRODUCTION_CONFIGURATION and any(host.startswith('.') or '*' in host for host in ALLOWED_HOSTS):
     raise RuntimeError('Use exact hostnames in ALLOWED_HOSTS on Vercel; wildcard hosts are not allowed.')
-if IS_VERCEL and (len(SECRET_KEY) < 50 or SECRET_KEY.startswith('django-insecure-')):
+if IS_PRODUCTION_CONFIGURATION and (len(SECRET_KEY) < 50 or SECRET_KEY.startswith('django-insecure-')):
     raise RuntimeError('Set a strong SECRET_KEY (at least 50 characters) in the Vercel project environment.')
-if IS_VERCEL and DEBUG:
+if IS_PRODUCTION_CONFIGURATION and DEBUG:
     raise RuntimeError('Set DEBUG=False in the Vercel project environment.')
 
 INSTALLED_APPS = [
@@ -230,10 +235,31 @@ if not DEBUG:
         generated_origin = f'https://{vercel_hostname}'
         if generated_origin not in CSRF_TRUSTED_ORIGINS:
             CSRF_TRUSTED_ORIGINS.append(generated_origin)
-    if IS_VERCEL and not CSRF_TRUSTED_ORIGINS:
+    if IS_PRODUCTION_CONFIGURATION and not CSRF_TRUSTED_ORIGINS:
         raise RuntimeError('Set exact HTTPS origins in CSRF_TRUSTED_ORIGINS for Vercel.')
-    if IS_VERCEL and any('*' in origin for origin in CSRF_TRUSTED_ORIGINS):
-        raise RuntimeError('Use exact HTTPS origins in CSRF_TRUSTED_ORIGINS on Vercel; wildcard origins are not allowed.')
+    if IS_PRODUCTION_CONFIGURATION:
+        from urllib.parse import urlsplit
+
+        approved_hosts = {host.lower() for host in ALLOWED_HOSTS}
+        if vercel_hostname:
+            approved_hosts.add(vercel_hostname.lower())
+        for origin in CSRF_TRUSTED_ORIGINS:
+            parsed_origin = urlsplit(origin)
+            if (
+                parsed_origin.scheme != 'https'
+                or not parsed_origin.hostname
+                or parsed_origin.hostname.lower() not in approved_hosts
+                or '*' in origin
+                or parsed_origin.username
+                or parsed_origin.password
+                or parsed_origin.path not in ('', '/')
+                or parsed_origin.query
+                or parsed_origin.fragment
+                or (parsed_origin.port not in (None, 443))
+            ):
+                raise RuntimeError(
+                    'CSRF_TRUSTED_ORIGINS must contain only HTTPS origins for exact ALLOWED_HOSTS or VERCEL_URL hostnames.'
+                )
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
@@ -264,14 +290,22 @@ LOGGING = {
             'level': 'INFO',
             'propagate': False,
         },
+        'apps.accounts.login_throttle': {
+            'handlers': ['console'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
     },
 }
 
 # ---- AI configuration (apps/ai_engine) ----
-GEMINI_API_KEY = _PROCESS_GEMINI_API_KEY or _DOTENV_GEMINI_API_KEY
+GEMINI_API_KEY = (
+    _PROCESS_GEMINI_API_KEY if IS_PRODUCTION_CONFIGURATION
+    else (_PROCESS_GEMINI_API_KEY or _DOTENV_GEMINI_API_KEY)
+)
 GEMINI_API_KEY_SOURCE = (
     'process environment' if _PROCESS_GEMINI_API_KEY
-    else 'environment file' if _DOTENV_GEMINI_API_KEY
+    else 'environment file' if _DOTENV_GEMINI_API_KEY and not IS_VERCEL
     else 'not configured'
 )
 GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-3.5-flash-lite')

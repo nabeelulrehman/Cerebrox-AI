@@ -309,7 +309,7 @@ class AuthenticationTests(TestCase):
         admin_client = Client()
         admin_client.force_login(admin)
         admin_page = admin_client.get('/accounts/profile/').content.decode()
-        for item in ('Overview', 'Students', 'Teacher approvals', 'Payments'):
+        for item in ('Overview', 'Students', 'Teachers', 'Payments'):
             self.assertIn(item, admin_page)
         for item in ('My Courses', 'Find Teachers', 'Teacher dashboard'):
             self.assertNotIn(item, admin_page)
@@ -372,7 +372,7 @@ class AuthenticationTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Register as Student')
         self.assertContains(response, 'Register as Teacher')
-        self.assertContains(response, '/teachers/register/')
+        self.assertContains(response, 'data-registration-choice="teacher"')
 
         teacher_response = Client().get('/teachers/register/')
         self.assertEqual(teacher_response.status_code, 200)

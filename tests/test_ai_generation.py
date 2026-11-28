@@ -231,6 +231,8 @@ class AIGenerationTests(TestCase):
         with (
             patch('apps.ai_engine.gemini_client._configured_client', return_value=client),
             patch('apps.ai_engine.gemini_client.settings.GEMINI_MAX_RETRIES', 2),
+            patch('apps.ai_engine.gemini_client.settings.GEMINI_FALLBACK_MODEL', ''),
+            patch('apps.ai_engine.gemini_client.settings.GEMINI_FALLBACK_MODEL_2', ''),
             patch('apps.ai_engine.gemini_client.time.sleep'),
         ):
             with self.assertRaises(AIUnavailableError) as raised:

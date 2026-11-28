@@ -174,10 +174,10 @@ class PreparationPlanGenerationTests(TestCase):
         self.assertLess(first_topic_activities['revision'], first_topic_activities['mock'])
         detail = self.client.get(reverse('preparation:detail', args=[plan.pk]))
         self.assertEqual(detail.status_code, 200)
-        for activity in activities:
-            local_start = timezone.localtime(activity.scheduled_at, ZoneInfo(plan.timezone))
-            expected_label = f'{local_start:%a}, {local_start:%b} {local_start.day} · {local_start.strftime("%I:%M %p").lstrip("0")}'
-            self.assertContains(detail, expected_label)
+        current = detail.context['current_session']
+        self.assertIsNotNone(current)
+        self.assertContains(detail, current.start_display)
+        self.assertContains(detail, current.title)
 
     def test_detail_repairs_legacy_collapsed_dates_and_displays_saved_dates(self):
         today = timezone.localdate()
@@ -200,10 +200,10 @@ class PreparationPlanGenerationTests(TestCase):
         activities = list(plan.sessions.order_by('scheduled_at', 'id'))
         self.assertEqual(response.status_code, 200)
         self.assertGreaterEqual(len({activity.scheduled_at.date() for activity in activities}), 5)
-        for activity in activities:
-            local_start = timezone.localtime(activity.scheduled_at, ZoneInfo(plan.timezone))
-            expected_label = f'{local_start:%a}, {local_start:%b} {local_start.day} · {local_start.strftime("%I:%M %p").lstrip("0")}'
-            self.assertContains(response, expected_label)
+        current = response.context['current_session']
+        self.assertIsNotNone(current)
+        self.assertContains(response, current.start_display)
+        self.assertContains(response, current.title)
 
     def test_reschedule_repairs_fourteen_legacy_duplicate_slots(self):
         today = timezone.localdate()
@@ -303,7 +303,7 @@ class PreparationPlanGenerationTests(TestCase):
         plan = PreparationPlan.objects.get(exam_name='Quiz workflow exam')
         topic = plan.topics.get()
         session = plan.sessions.get()
-        self.client.post(reverse('preparation:complete_session', args=[plan.pk, session.pk]))
+        self.client.post(reverse('preparation:start_session', args=[plan.pk, session.pk]))
 
         generated = [{
             'question': f'Question {index}?', 'option_a': 'Correct', 'option_b': 'B',

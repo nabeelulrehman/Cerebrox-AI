@@ -153,5 +153,8 @@ class NotificationTests(TestCase):
 
         decide_teacher_payment(teacher, payment.pk, approve=True)
         self.assertEqual(Notification.objects.filter(recipient=student, related_object_id=payment.pk).count(), 2)
-        self.assertEqual(Notification.objects.filter(recipient=teacher, related_object_id=payment.pk).count(), 1)
+        teacher_notifications = Notification.objects.filter(recipient=teacher, related_object_id=payment.pk)
+        self.assertEqual(teacher_notifications.count(), 2)
+        self.assertTrue(teacher_notifications.filter(title='New payment submitted').exists())
+        self.assertTrue(teacher_notifications.filter(title='New earning received').exists())
         self.assertEqual(Notification.objects.filter(recipient=admin, related_object_id=payment.pk).count(), 1)

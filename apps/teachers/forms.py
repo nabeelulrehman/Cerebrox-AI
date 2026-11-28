@@ -11,10 +11,13 @@ class TeacherRegisterForm(StyledFormMixin, UserCreationForm):
     first_name = forms.CharField(max_length=150, required=True)
     last_name = forms.CharField(max_length=150, required=False)
     email = forms.EmailField(required=True)
+    bio = forms.CharField(required=False, widget=forms.Textarea(attrs={'rows': 3}), label='Short professional bio')
     qualifications = forms.CharField(widget=forms.Textarea(attrs={'rows': 2}))
     subjects = forms.CharField(max_length=255, help_text='Comma-separated, e.g. "Physics, Mathematics"')
     experience_years = forms.IntegerField(min_value=0, max_value=60, initial=0)
     teaching_mode = forms.ChoiceField(choices=TeacherProfile.Mode.choices)
+    jazzcash_account = forms.CharField(max_length=100, required=False, label='JazzCash account number')
+    easypaisa_account = forms.CharField(max_length=100, required=False, label='Easypaisa account number')
     payment_method = forms.ChoiceField(choices=TeacherPaymentMethod.Method.choices, required=False)
     account_title = forms.CharField(max_length=160, required=False, label='Account Holder Name')
     account_number = forms.CharField(max_length=100, required=False, label='Mobile Number / Account Number')
@@ -60,11 +63,23 @@ class TeacherRegisterForm(StyledFormMixin, UserCreationForm):
                 user.save()
                 TeacherProfile.objects.create(
                     user=user,
+                    bio=self.cleaned_data.get('bio', ''),
                     qualifications=self.cleaned_data['qualifications'],
                     subjects=self.cleaned_data['subjects'],
                     experience_years=self.cleaned_data['experience_years'],
                     teaching_mode=self.cleaned_data['teaching_mode'],
                 )
+                account_title = user.get_full_name().strip() or user.username
+                for method, field_name in (
+                    (TeacherPaymentMethod.Method.JAZZCASH, 'jazzcash_account'),
+                    (TeacherPaymentMethod.Method.EASYPAISA, 'easypaisa_account'),
+                ):
+                    account_number = self.cleaned_data.get(field_name, '').strip()
+                    if account_number and self.cleaned_data.get('payment_method') != method:
+                        TeacherPaymentMethod.objects.create(
+                            teacher=user, method=method, account_title=account_title,
+                            account_number=account_number,
+                        )
                 if self.cleaned_data.get('payment_method'):
                     TeacherPaymentMethod.objects.create(
                         teacher=user, method=self.cleaned_data['payment_method'],

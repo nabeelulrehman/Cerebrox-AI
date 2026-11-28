@@ -24,6 +24,12 @@ LiveKit video, audio, screen sharing, and data-channel chat are delivered betwee
 - Attach a custom domain, then set its hostname in `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, and `SITE_URL`.
 - Use exact hostnames and HTTPS origins in `ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS`; wildcard domains are rejected in Vercel mode. The active `VERCEL_URL` deployment hostname is added automatically.
 
+### Verify production security settings without Neon
+
+For a local production-settings check, set `DJANGO_PRODUCTION_SECURITY_CHECKS=1` and provide process environment values for `DEBUG=False`, `SECRET_KEY`, `ALLOWED_HOSTS`, and `CSRF_TRUSTED_ORIGINS`, then run `venv/Scripts/python.exe manage.py check --deploy`. This mode reads configuration from process environment only, selects local SQLite, and does not require or connect to `DATABASE_URL`. Use a disposable secret for this check, not a production credential. The check rejects non-HTTPS or non-approved CSRF origins. Vercel itself continues to use its own process environment and Neon configuration.
+
+Login attempt throttling stores only keyed hashes in `LoginRateLimitBucket` and is shared by the web and API login endpoints. Apply the new account migration (`python manage.py migrate`) to each deployment database before serving login requests; Vercel does not run migrations automatically.
+
 ## Environment variables
 
 Required for a production deployment:

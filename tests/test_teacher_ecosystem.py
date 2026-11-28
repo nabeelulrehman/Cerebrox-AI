@@ -168,7 +168,10 @@ class TeacherAccountTests(TestCase):
         t.teacher_profile.refresh_from_db()
         self.assertTrue(t.teacher_profile.is_approved)
         self.assertEqual(t.teacher_profile.verified_by, admin)
-        r = login(t).post('/classes/teach/', {'name': 'Physics', 'enrollment_policy': 'approval'})
+        r = login(t).post('/classes/teach/', {
+            'name': 'Physics', 'subject': 'Physics', 'description': '', 'price': '0',
+            'enrollment_policy': 'approval',
+        })
         self.assertEqual(Classroom.objects.count(), 1)
 
     def test_students_cannot_open_teacher_views(self):

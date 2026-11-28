@@ -13,6 +13,7 @@ from django.utils import timezone
 from django.db import transaction
 
 from .forms import RegisterForm, LoginForm, ProfileForm, AdminPasswordChangeForm
+from .login_throttle import consume_login_attempt, normalize_login_identifier
 
 User = get_user_model()
 
@@ -56,6 +57,16 @@ def login_view(request):
     next_url = request.POST.get('next') or request.GET.get('next') or ''
     form = LoginForm(request, data=request.POST or None)
     if request.method == 'POST':
+        blocked, retry_after = consume_login_attempt(
+            request, normalize_login_identifier(request.POST.get('username', '')),
+        )
+        if blocked:
+            response = render(request, 'accounts/login.html', {
+                'form': form, 'next': next_url,
+                'login_error': 'Too many attempts. Please try again later.',
+            }, status=429)
+            response['Retry-After'] = str(retry_after)
+            return response
         if form.is_valid():
             user = form.get_user()
             login(request, user)

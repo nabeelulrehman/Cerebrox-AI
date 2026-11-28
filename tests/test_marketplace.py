@@ -799,6 +799,8 @@ class SessionTests(MarketBase):
             'title': 'Algebra class',
             'subject': 'Mathematics',
             'description': 'Linear equations',
+            'access_type': TeachingSession.AccessType.CLASS_ONLY,
+            'classroom': self.cl.pk,
             'scheduled_date': scheduled_date.isoformat(),
             'start_time': '10:00',
             'end_time': '11:30',
@@ -812,21 +814,22 @@ class SessionTests(MarketBase):
         self.assertContains(teacher_client.get(f'/market/sessions/{session.pk}/'), 'Booked students')
 
         student_client = login(self.student)
+        enroll(self.student, self.cl)
         detail = student_client.get(f'/market/sessions/{session.pk}/')
         self.assertContains(detail, 'Mathematics')
         self.assertContains(detail, 'Bring your workbook.')
-        self.assertContains(detail, 'Book this class')
+        self.assertContains(detail, 'Join this class for free')
         self.assertNotContains(detail, 'meet.google.com')
         self.assertContains(detail, 'LiveKit video classroom')
         booked = student_client.post(f'/market/sessions/{session.pk}/book/')
-        self.assertRedirects(booked, f'/market/sessions/{session.pk}/')
+        self.assertRedirects(booked, f'/market/sessions/{session.pk}/classroom/')
         self.assertEqual(session.bookings.get().status, SessionBooking.Status.CONFIRMED)
         self.assertContains(student_client.get(f'/market/sessions/{session.pk}/'), 'Confirmed')
 
         teacher_client.post(f'/market/teach/sessions/{session.pk}/start/')
         session.refresh_from_db()
         self.assertEqual(session.status, TeachingSession.Status.ONGOING)
-        self.assertContains(student_client.get(f'/market/sessions/{session.pk}/'), 'Join Class')
+        self.assertContains(student_client.get(f'/market/sessions/{session.pk}/'), 'Join Live Class')
         join_response = student_client.get(f'/market/sessions/{session.pk}/join/')
         self.assertEqual(join_response.status_code, 302)
         self.assertEqual(join_response['Location'], f'/market/sessions/{session.pk}/classroom/')
@@ -976,6 +979,7 @@ class SessionTests(MarketBase):
     def test_reschedule_and_cancellation_notify_booked_students(self):
         mail.outbox.clear()
         session = self.make_session()
+        enroll(self.student, self.cl)
         student_client = login(self.student)
         student_client.post(f'/market/sessions/{session.pk}/book/')
         self.assertIn(self.student.email, mail.outbox[0].to)
@@ -986,10 +990,11 @@ class SessionTests(MarketBase):
             'title': session.title,
             'subject': 'Physics',
             'description': 'Updated schedule',
+            'access_type': TeachingSession.AccessType.PUBLIC_ONLY,
             'scheduled_date': new_date.isoformat(),
             'start_time': '10:00',
             'end_time': '11:00',
-            'price': '0',
+            'price': '1',
             'capacity': '1',
             'instructions': 'Join on time.',
         })

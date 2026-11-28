@@ -1,5 +1,6 @@
 from django import forms
 from django.contrib.auth.forms import UserCreationForm, AuthenticationForm
+from django.contrib.auth.password_validation import validate_password
 from .models import User
 
 
@@ -119,6 +120,8 @@ class AdminPasswordChangeForm(StyledFormMixin, forms.Form):
         p1, p2 = cleaned.get('new_password1'), cleaned.get('new_password2')
         if p1 and p2 and p1 != p2:
             raise forms.ValidationError("The two new passwords don't match.")
+        if p1:
+            validate_password(p1, user=self.user)
         return cleaned
 
     def save(self):

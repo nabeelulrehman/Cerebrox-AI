@@ -950,7 +950,7 @@ def session_book(request, session_id):
         teacher__teacher_profile__verification_status='approved',
     )
     try:
-        if not services.is_session_class_student(request.user, s):
+        if not services.is_session_class_student(request.user, s) and s.price > 0:
             return redirect('market:session_checkout', session_id=s.pk)
         b = services.book_session(request.user, s)
         b.session = s

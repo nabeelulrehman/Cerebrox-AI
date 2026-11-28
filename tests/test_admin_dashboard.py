@@ -71,6 +71,7 @@ class AdminDashboardTests(TestCase):
         self.assertEqual(set(platform), {
             'Total Students', 'Total Teachers', 'Total Quizzes',
             'Total Online Sessions', 'Total Enrollments',
+            'Platform Commission', 'Outstanding Platform Dues',
         })
         self.assertEqual(platform['Total Students'], 1)
         self.assertEqual(platform['Total Teachers'], 1)
@@ -107,6 +108,9 @@ class AdminDashboardTests(TestCase):
         self.assertEqual(response.status_code, 302)
 
     def test_existing_admin_workflow_pages_still_render(self):
-        for url in ('/admin-panel/students/', '/admin-panel/teachers/', '/market/admin/queue/'):
+        for url in ('/admin-panel/students/', '/admin-panel/teachers/'):
             with self.subTest(url=url):
                 self.assertEqual(self.client.get(url).status_code, 200)
+        response = self.client.get('/market/admin/queue/')
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, '/admin-panel/payments/')

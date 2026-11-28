@@ -2,6 +2,14 @@ from django.contrib.auth.models import AbstractUser
 from django.db import models
 
 
+class LoginRateLimitBucket(models.Model):
+    """Hashed account/IP login throttle state; raw identifiers are never persisted."""
+    key = models.CharField(max_length=64, primary_key=True)
+    window_started_at = models.DateTimeField(db_index=True)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    alerted = models.BooleanField(default=False)
+
+
 class User(AbstractUser):
     """
     CerebroX custom user.

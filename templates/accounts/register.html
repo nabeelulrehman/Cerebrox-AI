@@ -31,10 +31,13 @@
 
       <div data-registration-fields="teacher" {% if registration_type != 'teacher' %}hidden{% endif %}>
         <div class="flex flex-col gap-4">
+          <div><label class="label" for="id_bio">Short professional bio</label>{{ teacher_form.bio }}</div>
           <div><label class="label" for="id_qualifications">Qualifications</label>{{ teacher_form.qualifications }}</div>
           <div><label class="label" for="id_subjects">Subjects</label>{{ teacher_form.subjects }}<p class="text-xs mt-1" style="color:var(--txt-faint)">Enter subjects separated by commas.</p></div>
           <div><label class="label" for="id_experience_years">Years of experience</label>{{ teacher_form.experience_years }}</div>
           <div><label class="label" for="id_teaching_mode">Teaching mode</label>{{ teacher_form.teaching_mode }}</div>
+          <div><label class="label" for="id_jazzcash_account">JazzCash account number (optional)</label>{{ teacher_form.jazzcash_account }}</div>
+          <div><label class="label" for="id_easypaisa_account">Easypaisa account number (optional)</label>{{ teacher_form.easypaisa_account }}</div>
           <p class="text-xs" style="color:var(--txt-faint)">Teacher accounts are reviewed by an administrator before teacher tools are available.</p>
         </div>
       </div>
