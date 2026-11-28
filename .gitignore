@@ -17,3 +17,4 @@ cereenv/
 .DS_Store
 private_media/
 .vercel
+.test-*/
