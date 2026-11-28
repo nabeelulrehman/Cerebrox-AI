@@ -4,6 +4,7 @@
       <p class="guidance-page__eyebrow">{% if is_teacher %}TEACHER ASSISTED{% else %}TEACHER ASSISTED LEARNING{% endif %}</p>
       <h1 class="font-display text-2xl font-bold">{% if is_teacher %}Guidance inbox{% else %}My messages{% endif %}</h1>
       <p class="guidance-page__subtitle">Keep your questions and replies together in one place.</p>
+      {% if unread_message_notification_count %}<a class="notification-inline-indicator" href="#recent-message-notifications">{{ unread_message_notification_count }} unread message notification{{ unread_message_notification_count|pluralize }}</a>{% endif %}
     </div>
     <div class="guidance-compose-launch">
       <button class="btn btn-primary guidance-compose__toggle" type="button" data-guidance-compose-open>New Message</button>

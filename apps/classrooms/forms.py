@@ -7,6 +7,7 @@ class ClassroomForm(StyledFormMixin, forms.ModelForm):
     class Meta:
         model = Classroom
         fields = ('name', 'subject', 'description', 'price', 'enrollment_policy', 'listed_publicly')
+        help_texts = {'listed_publicly': ''}
 
     def clean_price(self):
         price = self.cleaned_data['price']

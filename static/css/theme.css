@@ -68,6 +68,8 @@ h1,h2,h3,h4,.font-display{ font-family:'Sora',system-ui,sans-serif; letter-spaci
 .teacher-guidance-row{ display:flex; align-items:center; justify-content:space-between; gap:1rem; }
 .teacher-guidance-row .label{ margin:0; }
 .teacher-guidance-row input[type="checkbox"].field{ width:1rem; height:1rem; flex:0 0 auto; margin:0; padding:0; accent-color:#7041c3; }
+.teacher-public-list-row{ padding-right:.75rem; }
+.teacher-public-list-row input[type="checkbox"].field{ width:.85rem; height:.85rem; }
 .action-confirm-dialog{ width:min(calc(100% - 2rem), 27rem); max-width:none; margin:auto; padding:0; border:0; background:transparent; color:var(--txt); }
 .action-confirm-dialog::backdrop{ background:rgba(18,14,30,.62); backdrop-filter:blur(3px); }
 .action-confirm-panel{ padding:1.35rem; border:1px solid var(--line); border-radius:16px; background:var(--panel); box-shadow:0 24px 70px rgba(24,18,42,.35); }
@@ -86,6 +88,95 @@ select.field option{ background:#fff; color:var(--txt); }
 .navlink:hover{ background:var(--fill); color:var(--txt); }
 .navlink.active{ background:var(--grad); color:#fff; }
 .site-brand{ align-self:center; gap:.55rem; line-height:1; text-decoration:none; }
+.notification-menu{ position:relative; }
+.notification-trigger{ position:relative; display:grid; place-items:center; width:2.5rem; height:2.5rem; border:1px solid transparent; border-radius:999px; background:transparent; color:var(--txt-dim); cursor:pointer; }
+.notification-trigger:hover,.notification-trigger[aria-expanded="true"]{ background:var(--fill); color:var(--txt); }
+.notification-trigger svg{ width:1.25rem; height:1.25rem; fill:none; stroke:currentColor; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
+.notification-badge{ position:absolute; top:.05rem; right:-.05rem; min-width:1.15rem; height:1.15rem; padding:0 .2rem; display:grid; place-items:center; border:2px solid var(--panel); border-radius:999px; background:#bd3348; color:white; font-size:.65rem; line-height:1; font-weight:700; }
+.notification-badge[hidden]{ display:none; }
+.notification-dropdown{ position:absolute; z-index:70; top:calc(100% + .65rem); right:-3rem; width:min(23rem,calc(100vw - 1.5rem)); overflow:hidden; border:1px solid var(--line); border-radius:16px; background:var(--panel); box-shadow:0 18px 48px rgba(40,33,61,.18); backdrop-filter:blur(18px); }
+.notification-dropdown[hidden]{ display:none; }
+.notification-dropdown__header,.notification-dropdown__all{ display:flex; align-items:center; justify-content:space-between; padding:.8rem 1rem; border-bottom:1px solid var(--line); font-size:.85rem; }
+.notification-dropdown__header button{ border:0; background:transparent; color:#7041c3; font:inherit; font-size:.75rem; cursor:pointer; }
+.notification-dropdown__header form{ margin:0; }
+.notification-dropdown__header button:disabled{ opacity:.55; cursor:wait; }
+.notification-dropdown__all{ justify-content:space-around; border-top:1px solid var(--line); border-bottom:0; }
+.notification-dropdown__all a{ color:#7041c3; text-decoration:none; font-size:.78rem; font-weight:600; }
+.notification-dropdown__items{ max-height:24rem; overflow:auto; }
+.notification-item{ display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; padding:.8rem 1rem; color:var(--txt); text-decoration:none; border-bottom:1px solid var(--line); }
+.notification-dropdown .notification-item{ border-radius:0; border-left:0; border-right:0; border-top:0; background:transparent; }
+.notification-item:hover{ background:var(--fill); }
+.notification-item.is-unread{ background:rgba(112,65,195,.055); }
+.notification-item__copy{ display:grid; gap:.2rem; min-width:0; }
+.notification-item__copy strong{ font-size:.82rem; }
+.notification-item__copy > span{ color:var(--txt-dim); font-size:.76rem; line-height:1.4; overflow-wrap:anywhere; }
+.notification-item__copy time{ color:var(--txt-faint); font-size:.68rem; }
+.notification-item__state{ flex:0 0 auto; color:var(--txt-faint); font-size:.68rem; }
+.notification-item__state.is-unread{ color:#7041c3; font-weight:700; }
+.notification-empty{ margin:0; padding:1rem; color:var(--txt-faint); font-size:.82rem; text-align:center; }
+.notifications-page{ max-width:54rem; }
+.notifications-page__header{ display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-bottom:1.25rem; }
+.notifications-page__eyebrow{ margin:0 0 .3rem; color:#7041c3; font-size:.68rem; font-weight:700; letter-spacing:.1em; }
+.notification-filters{ display:flex; flex-wrap:wrap; gap:.45rem; margin-bottom:1rem; }
+.notification-filters a{ padding:.45rem .8rem; border:1px solid var(--line); border-radius:999px; color:var(--txt-dim); text-decoration:none; font-size:.78rem; }
+.notification-filters a.is-active{ border-color:transparent; background:var(--grad); color:white; }
+.notification-list{ display:grid; gap:.55rem; }
+.notification-list .notification-item{ border:1px solid var(--line); border-radius:14px; }
+.notification-inline-indicator{ display:inline-flex; margin:.5rem 0 1rem; padding:.35rem .7rem; border:1px solid rgba(112,65,195,.2); border-radius:999px; background:rgba(112,65,195,.07); color:#7041c3; font-size:.75rem; font-weight:600; text-decoration:none; }
+.notification-inline-list{ display:grid; gap:.35rem; margin:.6rem 0 1rem; }
+.notification-inline-list h2{ margin:0 0 .25rem; font-size:.9rem; }
+.notification-inline-list__item{ display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; padding:.65rem .8rem; border:1px solid var(--line); border-radius:12px; color:var(--txt); text-decoration:none; }
+.notification-inline-list__item:hover{ background:var(--fill); }
+.notification-inline-list__item.is-unread{ border-color:rgba(112,65,195,.28); background:rgba(112,65,195,.05); }
+.notification-inline-list__item > span:first-child{ display:grid; gap:.15rem; }
+.notification-inline-list__item strong{ font-size:.78rem; }
+.notification-inline-list__item small{ color:var(--txt-dim); font-size:.74rem; }
+.notification-inline-list__item time{ color:var(--txt-faint); font-size:.66rem; }
+.notification-inline-list__more{ justify-self:start; padding:.25rem .3rem; color:#7041c3; text-decoration:none; font-size:.73rem; font-weight:600; }
+.teacher-payment-review__header{ display:flex; align-items:flex-start; justify-content:space-between; gap:1.25rem; margin-bottom:1.25rem; }
+.teacher-payment-review__header h2{ margin:0; font-size:1.05rem; }
+.teacher-payment-review__eyebrow,.teacher-payment-card__eyebrow{ margin:0 0 .3rem; color:#7041c3; font-size:.65rem; font-weight:700; letter-spacing:.1em; }
+.teacher-payment-review__intro{ margin:.35rem 0 0; color:var(--txt-dim); font-size:.8rem; }
+.teacher-payment-review__header-actions{ display:flex; align-items:center; gap:.65rem; flex:0 0 auto; }
+.teacher-payment-review__count{ padding:.4rem .7rem; border:1px solid rgba(112,65,195,.2); border-radius:999px; background:rgba(112,65,195,.07); color:#7041c3; font-size:.72rem; font-weight:700; white-space:nowrap; }
+.teacher-payment-review__list{ display:grid; gap:.75rem; }
+.teacher-payment-card{ display:grid; grid-template-columns:minmax(0,1.2fr) minmax(18rem,.8fr); overflow:hidden; border:1px solid var(--line); border-radius:16px; background:rgba(255,255,255,.5); }
+.teacher-payment-card__main{ min-width:0; padding:1rem 1.1rem; }
+.teacher-payment-card__title-row{ display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; }
+.teacher-payment-card__title{ margin:0; overflow-wrap:anywhere; font-size:.98rem; font-weight:650; }
+.teacher-payment-card__amount{ flex:0 0 auto; color:var(--txt); font-size:.92rem; white-space:nowrap; }
+.teacher-payment-card__details{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.65rem; margin:1rem 0 .8rem; }
+.teacher-payment-card__details div{ min-width:0; }
+.teacher-payment-card__details dt{ margin-bottom:.15rem; color:var(--txt-faint); font-size:.67rem; }
+.teacher-payment-card__details dd{ margin:0; overflow-wrap:anywhere; color:var(--txt-dim); font-size:.75rem; font-weight:600; }
+.teacher-payment-card__proof{ display:inline-flex; align-items:center; gap:.35rem; color:#7041c3; font-size:.75rem; font-weight:650; text-decoration:none; }
+.teacher-payment-card__proof:hover{ text-decoration:underline; }
+.teacher-payment-card__proof-row{ display:flex; align-items:center; justify-content:space-between; gap:1rem; }
+.payment-history-card{ display:grid; gap:.25rem; }
+.payment-history-card__header{ display:flex; align-items:flex-start; justify-content:space-between; gap:.75rem; }
+.payment-history-card__status{ flex:0 0 auto; padding:.22rem .5rem; font-size:.68rem; line-height:1.25; }
+.payment-history-card__details p{ margin:.25rem 0; }
+.payment-history-card__footer{ display:flex; justify-content:flex-end; margin-top:.35rem; }
+.payment-history-card__footer .btn{ padding:.4rem .7rem; font-size:.72rem; }
+[data-payment-method-panel][hidden]{ display:none!important; }
+.teacher-method-card{ align-items:flex-start; }
+.teacher-method-card > div{ min-width:0; }
+.teacher-method-status{ flex:0 0 auto; align-self:flex-start; padding:.22rem .5rem; font-size:.68rem; line-height:1.25; }
+.teacher-payment-card__actions{ display:flex; align-items:center; padding:1rem; border-left:1px solid var(--line); background:var(--fill); }
+.teacher-payment-card__reject{ display:grid; grid-template-columns:minmax(0,1fr) auto; gap:.45rem; width:100%; }
+.teacher-payment-card__reject label,.teacher-payment-card__reject .field{ grid-column:1/-1; }
+.teacher-payment-card__reject label{ display:block; margin-bottom:0; color:var(--txt-dim); font-size:.68rem; font-weight:600; }
+.teacher-payment-card__reject .field{ min-width:0; padding:.58rem .7rem; font-size:.78rem; }
+.teacher-payment-card__reject .btn{ grid-column:2; padding:.58rem .8rem; font-size:.78rem; }
+.teacher-payment-card__approve{ display:flex; justify-content:flex-end; margin:0; }
+.teacher-payment-review__empty{ display:flex; align-items:center; gap:.75rem; padding:1rem; border:1px dashed var(--line-strong); border-radius:14px; background:var(--fill); }
+.teacher-payment-review__empty-icon{ display:grid; place-items:center; width:2rem; height:2rem; flex:0 0 auto; border-radius:50%; background:rgba(8,127,91,.1); color:var(--ok); font-weight:700; }
+.teacher-payment-review__empty strong{ font-size:.82rem; }
+.teacher-payment-review__empty p{ margin:.15rem 0 0; color:var(--txt-dim); font-size:.75rem; }
+@media(max-width:900px){ .teacher-payment-card{ grid-template-columns:minmax(0,1fr); } .teacher-payment-card__actions{ border-left:0; border-top:1px solid var(--line); } }
+@media(max-width:600px){ .teacher-payment-review__header{ flex-direction:column; } .teacher-payment-review__header-actions{ width:100%; justify-content:space-between; } .teacher-payment-card__details{ grid-template-columns:minmax(0,1fr) minmax(0,1fr); } .teacher-payment-card__proof-row{ gap:.5rem; } .teacher-payment-card__proof-row .btn{ padding:.55rem .6rem; font-size:.74rem; } .teacher-payment-card__actions{ padding:.8rem; } .teacher-payment-card__actions .btn{ padding:.55rem .6rem; font-size:.74rem; } }
+@media(max-width:480px){ .payment-history-card__header{ gap:.5rem; } .payment-history-card__status{ padding:.2rem .42rem; font-size:.64rem; } .payment-history-card__footer .btn{ padding:.38rem .6rem; } }
+@media(max-width:480px){ .notification-dropdown{ right:-3rem; width:min(22rem,calc(100vw - 1rem)); } .notifications-page__header{ align-items:flex-start; flex-direction:column; } }
 .site-brand__icon{ display:block; width:2rem; height:2rem; flex:0 0 auto; fill:rgba(167,139,250,.12); stroke:#7041c3; stroke-width:1.55; stroke-linecap:round; stroke-linejoin:round; }
 .site-header-inner{ width:100%; min-width:0; max-width:100%; box-sizing:border-box; }
 .site-header-left{ display:flex; align-items:center; gap:.75rem; min-width:0; }

@@ -16,6 +16,7 @@ def create_checkout(payment, request):
     stripe.api_key = settings.PAYMENT_STRIPE_SECRET_KEY
     amount_minor = int((Decimal(payment.amount) * 100).quantize(Decimal('1')))
     base = settings.SITE_URL or request.build_absolute_uri('/')[:-1]
+    platform_dues = payment.is_platform_payment
     session = stripe.checkout.Session.create(
         mode='payment',
         payment_method_types=['card'],
@@ -23,12 +24,16 @@ def create_checkout(payment, request):
         customer_email=payment.student.email or None,
         line_items=[{'price_data': {
             'currency': 'pkr',
-            'product_data': {'name': payment.session.title, 'description': 'Live online class booking'},
+            'product_data': {'name': 'Platform commission payment' if platform_dues else payment.session.title,
+                             'description': 'Teacher platform dues' if platform_dues else 'Live online class booking'},
             'unit_amount': amount_minor,
         }, 'quantity': 1}],
-        metadata={'payment_reference': payment.reference, 'session_id': str(payment.session_id)},
-        success_url=base + reverse('market:payment_result', args=[payment.reference]),
-        cancel_url=base + reverse('market:payment_result', args=[payment.reference]),
+        metadata={'payment_reference': payment.reference, 'session_id': str(payment.session_id or ''),
+                  'is_platform_payment': str(platform_dues).lower()},
+        success_url=base + (reverse('teachers:earnings') if platform_dues else
+                            reverse('market:payment_result', args=[payment.reference])),
+        cancel_url=base + (reverse('teachers:earnings') if platform_dues else
+                           reverse('market:payment_result', args=[payment.reference])),
         idempotency_key=f'cerebrox-{payment.reference}',
     )
     payment.provider_session_id = session.id

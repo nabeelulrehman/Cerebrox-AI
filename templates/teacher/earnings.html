@@ -1,0 +1,57 @@
+{% extends "layouts/teacher_layout.html" %}
+{% block title %}Earnings & payments{% endblock %}
+{% block content %}
+<div class="flex flex-wrap justify-between items-end gap-3 mb-5">
+  <div><h1 class="font-display text-2xl font-bold">Earnings & payments</h1><p class="text-sm mt-1" style="color:var(--txt-dim)">Student payments, platform commission and your dues.</p></div>
+</div>
+<section class="grid sm:grid-cols-2 xl:grid-cols-3 gap-3 mb-6">
+  <div class="glass p-4"><p class="text-xs" style="color:var(--txt-faint)">Total Earnings</p><strong class="text-xl">PKR {{ summary.total_earnings }}</strong></div>
+  <div class="glass p-4"><p class="text-xs" style="color:var(--txt-faint)">Confirmed Student Payments</p><strong class="text-xl">PKR {{ summary.received_payments }}</strong></div>
+  <div class="glass p-4"><p class="text-xs" style="color:var(--txt-faint)">Pending Student Payments</p><strong class="text-xl">PKR {{ summary.pending_earnings }}</strong></div>
+  <div class="glass p-4"><p class="text-xs" style="color:var(--txt-faint)">Platform Commission</p><strong class="text-xl">PKR {{ summary.platform_commission }}</strong></div>
+  <div class="glass p-4"><p class="text-xs" style="color:var(--txt-faint)">Outstanding Amount Payable to Platform</p><strong class="text-xl">PKR {{ summary.outstanding_platform }}</strong></div>
+</section>
+<div class="grid gap-4 mb-6">
+  <section class="glass p-5">
+    <h2 class="font-display font-semibold text-lg">Pay Platform</h2>
+    <p class="text-sm mt-1 mb-4" style="color:var(--txt-dim)">Outstanding dues: <strong>PKR {{ summary.outstanding_platform }}</strong>. Manual payments remain pending until admin verification.</p>
+    {% if pay_methods %}
+    <form method="post" enctype="multipart/form-data" class="grid gap-3">{% csrf_token %}<input type="hidden" name="action" value="pay_platform">
+      <div><label class="label" for="platform-method">Payment method</label><select class="field" required name="method" id="platform-method" data-platform-method><option value="">Choose a method</option>{% for value,label in pay_methods %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select></div>
+      {% if payment_config %}<div class="glass-soft p-3 text-sm" data-method-details><span data-details="jazzcash" hidden>JazzCash: {{ payment_config.jazzcash_account_title }} · {{ payment_config.jazzcash_account_number }}</span><span data-details="easypaisa" hidden>Easypaisa: {{ payment_config.easypaisa_account_title }} · {{ payment_config.easypaisa_account_number }}</span><span data-details="bank_transfer" hidden>{{ payment_config.bank_name }} · {{ payment_config.bank_account_title }} · IBAN {{ payment_config.bank_iban }} · Raast {{ payment_config.bank_raast_id }}<br>{{ payment_config.bank_instructions }}</span><span data-details="stripe" hidden>Secure card payment processed by Stripe.</span></div>{% endif %}
+      <div data-manual-field><label class="label" for="platform-reference">Transaction reference</label><input class="field" id="platform-reference" name="transaction_reference" maxlength="100"></div>
+      <div data-manual-field><label class="label" for="platform-receipt">Receipt (JPG, PNG or PDF; max 5 MB)</label><input class="field" id="platform-receipt" name="receipt" type="file" accept=".jpg,.jpeg,.png,.pdf"></div>
+      <button class="btn btn-primary w-max" type="submit" {% if summary.outstanding_platform <= 0 %}disabled{% endif %}>Submit platform payment</button>
+    </form>
+    {% else %}<p class="glass-soft p-3 text-sm">No platform payment method is currently enabled. Please contact the administrator.</p>{% endif %}
+  </section>
+</div>
+<section class="glass p-5">
+  <div class="mb-4"><h2 class="font-display font-semibold text-lg">Transaction history</h2><p class="text-sm" style="color:var(--txt-dim)">Student payments and payments made to the platform.</p></div>
+  <form method="get" class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+    <div><label class="label" for="tx-status">Status</label><select class="field" name="status" id="tx-status"><option value="">All statuses</option>{% for value,label in status_choices %}<option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+    <div><label class="label" for="tx-from">From</label><input class="field" id="tx-from" type="date" name="from" value="{{ date_from }}"></div>
+    <div><label class="label" for="tx-to">To</label><input class="field" id="tx-to" type="date" name="to" value="{{ date_to }}"></div>
+    <div class="flex items-end gap-2"><button class="btn btn-primary">Filter</button><a class="btn btn-ghost" href="{% url 'teachers:earnings' %}">Reset</a></div>
+  </form>
+  <div class="overflow-x-auto"><table class="w-full text-sm min-w-[700px]"><thead><tr class="text-left border-b" style="border-color:var(--line)"><th class="py-3 pr-3">Date</th><th class="py-3 pr-3">Type</th><th class="py-3 pr-3">Reference</th><th class="py-3 pr-3">Details</th><th class="py-3 pr-3">Method</th><th class="py-3 pr-3">Amount</th><th class="py-3">Status</th></tr></thead><tbody>
+  {% for item in transactions %}<tr class="border-b" style="border-color:var(--line)"><td class="py-3 pr-3 whitespace-nowrap">{{ item.at|date:"M j, Y H:i" }}</td><td class="py-3 pr-3">{{ item.type }}</td><td class="py-3 pr-3">{{ item.reference }}</td><td class="py-3 pr-3">{{ item.counterparty }}{% if item.object.review_note or item.object.note %}<span class="block text-xs mt-1" style="color:var(--txt-dim)">{{ item.object.review_note|default:item.object.note }}</span>{% endif %}</td><td class="py-3 pr-3">{{ item.method }}</td><td class="py-3 pr-3 whitespace-nowrap">PKR {{ item.amount }}</td><td class="py-3"><span class="pill">{{ item.status }}</span>{% if item.object.checkout_url and item.object.status == 'pending' %}<a class="grad-text ml-2" href="{{ item.object.checkout_url }}">Continue Stripe checkout</a>{% endif %}{% if item.object.receipt %}<a class="grad-text ml-2" href="{% url 'market:payment_receipt' item.object.pk %}">Receipt</a>{% endif %}</td></tr>
+  {% empty %}<tr><td colspan="7" class="py-8 text-center" style="color:var(--txt-dim)">No transactions match these filters.</td></tr>{% endfor %}
+  </tbody></table></div>
+  {% if page_obj.paginator.num_pages > 1 %}<nav class="flex flex-wrap justify-between items-center gap-3 mt-4" aria-label="Transaction pages"><span class="text-sm" style="color:var(--txt-dim)">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }} · {{ page_obj.paginator.count }} transactions</span><div class="flex gap-2">{% if page_obj.has_previous %}<a class="btn btn-ghost" href="?status={{ status|urlencode }}&from={{ date_from|urlencode }}&to={{ date_to|urlencode }}&page={{ page_obj.previous_page_number }}">Previous</a>{% endif %}{% if page_obj.has_next %}<a class="btn btn-ghost" href="?status={{ status|urlencode }}&from={{ date_from|urlencode }}&to={{ date_to|urlencode }}&page={{ page_obj.next_page_number }}">Next</a>{% endif %}</div></nav>{% endif %}
+</section>
+<script>
+(() => {
+  const select = document.querySelector('[data-platform-method]');
+  if (!select) return;
+  const fields = document.querySelectorAll('[data-manual-field]');
+  const details = document.querySelectorAll('[data-details]');
+  const update = () => {
+    const manual = select.value && select.value !== 'stripe';
+    fields.forEach(el => { el.hidden = !manual; el.querySelector('input').required = manual; });
+    details.forEach(el => { el.hidden = el.dataset.details !== select.value; });
+  };
+  select.addEventListener('change', update); update();
+})();
+</script>
+{% endblock %}

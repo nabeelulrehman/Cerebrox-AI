@@ -1,5 +1,7 @@
 {% for field in form %}
-{% if field.name == 'offers_free_guidance' %}
+{% if field.name == 'listed_publicly' %}
+<div class="teacher-guidance-field"><div class="teacher-guidance-row teacher-public-list-row"><label class="label" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}</div>
+{% elif field.name == 'offers_free_guidance' %}
 <div class="teacher-guidance-field"><div class="teacher-guidance-row"><label class="label" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}</div>
 {% else %}
 <div><label class="label" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}

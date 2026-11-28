@@ -20,6 +20,7 @@ LiveKit video, audio, screen sharing, and data-channel chat are delivered betwee
 - Output directory: leave unset.
 - Install command: leave automatic so Vercel installs `requirements.txt`.
 - Add all required variables below to Production, Preview, and Development as appropriate. Use different databases and credentials for non-production environments.
+- Configure Production `DATABASE_URL` in the Vercel project environment with the existing Neon PostgreSQL URL. This application reads that variable only when Vercel sets `VERCEL`; local `.env` and local SQLite are never consulted for production database selection. Use a separate Neon database or branch for Preview and Development deployments so those environments cannot change production data.
 - Attach a custom domain, then set its hostname in `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, and `SITE_URL`.
 - Use exact hostnames and HTTPS origins in `ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS`; wildcard domains are rejected in Vercel mode. The active `VERCEL_URL` deployment hostname is added automatically.
 
@@ -52,7 +53,7 @@ Add these when the related feature is enabled:
 
 Optional security tuning: `SECURE_SSL_REDIRECT=True`, `SECURE_HSTS_SECONDS=31536000`, `SECURE_HSTS_INCLUDE_SUBDOMAINS=True`. HTTPS cookies, proxy HTTPS handling, and secure content defaults are enabled whenever `DEBUG=False`.
 
-Never set production secrets in source control or `.env.example`. Vercel reserved variables are supplied by Vercel; the app accepts `VERCEL_URL` automatically as an allowed host.
+Never set production secrets in source control, `.env`, or `.env.example`. Vercel reserved variables are supplied by Vercel; the app accepts `VERCEL_URL` automatically as an allowed host. In local development, migrations target only `BASE_DIR/db.sqlite3`. On Vercel, migrations target the Neon URL configured in Vercel's Environment Variables; run them from a trusted production migration shell with Vercel's production environment loaded. The Vercel build does not automatically migrate a database.
 
 ## Database and media migration
 

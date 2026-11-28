@@ -6,6 +6,7 @@ app_name = 'teachers'
 urlpatterns = [
     path('register/', views.teacher_register, name='register'),
     path('dashboard/', views.dashboard, name='dashboard'),
+    path('earnings/', views.earnings, name='earnings'),
     path('profile/', views.profile_edit, name='profile_edit'),
     path('payments/<int:payment_id>/decide/', views.payment_decide, name='payment_decide'),
     path('directory/', views.directory, name='directory'),

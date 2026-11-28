@@ -2,17 +2,22 @@
 {% block title %}Payment history{% endblock %}
 {% block content %}
 <h1 class="font-display text-2xl font-bold mb-5">{% if request.user.is_teacher %}Payments and earnings{% else %}Payment history{% endif %}</h1>
+{% if unread_payment_notification_count %}<a class="notification-inline-indicator" href="#recent-payment-notifications">{{ unread_payment_notification_count }} unread payment update{{ unread_payment_notification_count|pluralize }}</a>{% endif %}
+{% include "notifications/_inline_list.html" with items=payment_notifications heading="Recent payment updates" filter="payment" %}
 {% if request.user.is_teacher %}<p class="glass-soft p-4 mb-4">Approved teacher earnings: PKR {{ teacher_earnings }}</p>{% endif %}
 <div class="grid gap-3">
   {% for payment in payments %}
-    <article class="glass p-4 flex flex-wrap justify-between gap-3">
-      <div><strong>{{ payment.session.title|default:payment.session_title|default:payment.resource.title|default:payment.classroom.name|default:'Payment' }}</strong><p class="text-sm mt-1">{{ payment.reference }} · {{ payment.get_method_display|default:"Manual review" }} · {% if payment.is_manual_teacher_payment %}Direct teacher transfer{% elif payment.method == 'stripe' %}Stripe gateway{% else %}Platform payment review{% endif %} · PKR {{ payment.amount }}</p>
+    <article id="payment-{{ payment.pk }}" class="glass p-4 payment-history-card">
+      <header class="payment-history-card__header">
+        <strong>{% include "marketplace/_payment_title.html" with payment=payment %}</strong>
+        <span class="pill payment-history-card__status">{{ payment.get_status_display }}</span>
+      </header>
+      <div class="payment-history-card__details"><p class="text-sm mt-1">{{ payment.reference }} · {{ payment.get_method_display|default:"Manual review" }} · {% if payment.is_manual_teacher_payment %}Direct teacher transfer{% elif payment.method == 'stripe' %}Stripe gateway{% else %}Platform payment review{% endif %} · PKR {{ payment.amount }}</p>
       {% if request.user.is_teacher %}<p class="text-sm">Student: {{ payment.student.get_full_name|default:payment.student.username }}</p>{% endif %}
       {% if payment.transaction_reference %}<p class="text-sm">Transfer reference: {{ payment.transaction_reference }}</p>{% endif %}</div>
-      {% if payment.is_manual_teacher_payment %}<a class="btn btn-ghost" href="{% url 'market:payment_receipt' payment.id %}">View proof</a>{% endif %}
-      <span class="pill">{{ payment.get_status_display }}</span>
       {% if payment.review_note %}<p class="w-full text-sm" style="color:var(--txt-dim)">Review note: {{ payment.review_note }}</p>{% endif %}
       {% if request.user.is_teacher and payment.status == 'confirmed' %}<p class="w-full text-sm">Commission {{ payment.commission_percentage }}% · PKR {{ payment.platform_commission }} · Your earning PKR {{ payment.teacher_earning }}</p>{% endif %}
+      {% if payment.is_manual_teacher_payment %}<footer class="payment-history-card__footer"><a class="btn btn-ghost" href="{% url 'market:payment_receipt' payment.id %}">View proof</a></footer>{% endif %}
     </article>
   {% empty %}<p class="text-sm" style="color:var(--txt-faint)">No payments recorded yet.</p>{% endfor %}
 </div>

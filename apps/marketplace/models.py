@@ -132,6 +132,7 @@ class Payment(models.Model):
     checkout_url = models.URLField(max_length=1000, blank=True)
     transaction_reference = models.CharField(max_length=100, blank=True)
     is_manual_teacher_payment = models.BooleanField(default=False, db_index=True)
+    is_platform_payment = models.BooleanField(default=False, db_index=True)
     teacher_payment_method = models.ForeignKey(
         'teachers.TeacherPaymentMethod', null=True, blank=True, related_name='payments', on_delete=models.SET_NULL,
     )
@@ -152,14 +153,23 @@ class Payment(models.Model):
     class Meta:
         ordering = ['-created_at']
         constraints = [
+            models.CheckConstraint(
+                check=Q(resource__isnull=False) | Q(session__isnull=False) | Q(classroom__isnull=False)
+                | Q(is_platform_payment=True), name='payment_has_target',
+            ),
             models.UniqueConstraint(fields=['student', 'resource'], condition=Q(resource__isnull=False)
+                                    & Q(is_platform_payment=False)
                                     & ~Q(status='rejected'), name='one_live_payment_per_resource'),
             models.UniqueConstraint(fields=['student', 'session'], condition=Q(session__isnull=False)
+                                    & Q(is_platform_payment=False)
                                     & ~Q(status='rejected'), name='one_live_payment_per_session'),
             models.UniqueConstraint(fields=['student', 'classroom'], condition=Q(classroom__isnull=False)
+                                    & Q(is_platform_payment=False)
                                     & ~Q(status='rejected'), name='one_live_payment_per_classroom'),
             models.UniqueConstraint(fields=['transaction_reference'], condition=~Q(transaction_reference=''),
                                     name='uniq_payment_transaction_reference'),
+            models.UniqueConstraint(fields=['teacher'], condition=Q(is_platform_payment=True, status='pending'),
+                                    name='one_pending_platform_payment_per_teacher'),
         ]
 
 
@@ -201,6 +211,10 @@ class PaymentMethodConfiguration(models.Model):
     easypaisa_enabled = models.BooleanField(default=False)
     bank_transfer_enabled = models.BooleanField(default=False)
     stripe_enabled = models.BooleanField(default=False)
+    jazzcash_account_title = models.CharField(max_length=160, blank=True)
+    jazzcash_account_number = models.CharField(max_length=40, blank=True)
+    easypaisa_account_title = models.CharField(max_length=160, blank=True)
+    easypaisa_account_number = models.CharField(max_length=40, blank=True)
     bank_account_title = models.CharField(max_length=160, blank=True)
     bank_name = models.CharField(max_length=160, blank=True)
     bank_iban = models.CharField(max_length=64, blank=True)

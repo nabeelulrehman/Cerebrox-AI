@@ -22,6 +22,7 @@ urlpatterns = [
     path('classes/', include('apps.classrooms.urls', namespace='classrooms')),
     path('class-quizzes/', include('apps.class_quizzes.urls', namespace='class_quizzes')),
     path('market/', include('apps.marketplace.urls', namespace='market')),
+    path('notifications/', include('apps.notifications.urls', namespace='notifications')),
 
     path('api/', include('api.urls')),
 ]

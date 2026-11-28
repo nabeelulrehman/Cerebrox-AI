@@ -30,15 +30,60 @@
   </div>
   <section class="glass p-6 mt-5">
     <div class="flex justify-between items-center gap-3 mb-3"><h2 class="font-display font-semibold">Recent payments</h2><a class="btn btn-ghost" href="{% url 'market:payment_history' %}">Payment history</a></div>
-    {% for payment in recent_session_payments %}<div class="py-2 border-b flex justify-between gap-3" style="border-color:var(--line)"><span>{{ payment.session.title|default:payment.session_title|default:payment.resource.title|default:payment.classroom.name }} · {{ payment.student.get_full_name|default:payment.student.username }} · PKR {{ payment.amount }}</span><span class="pill">{{ payment.get_status_display }}</span></div>{% empty %}<p class="text-sm" style="color:var(--txt-faint)">No payments yet.</p>{% endfor %}
+    {% for payment in recent_session_payments %}<div class="py-2 border-b flex justify-between gap-3" style="border-color:var(--line)"><span>{% include "marketplace/_payment_title.html" with payment=payment %} · {{ payment.student.get_full_name|default:payment.student.username }} · PKR {{ payment.amount }}</span><span class="pill">{{ payment.get_status_display }}</span></div>{% empty %}<p class="text-sm" style="color:var(--txt-faint)">No payments yet.</p>{% endfor %}
   </section>
-  <section class="glass p-6 mt-5">
-    <div class="flex flex-wrap justify-between items-center gap-3 mb-3"><h2 class="font-display font-semibold">Teacher payment verification</h2><a class="btn btn-ghost" href="{% url 'market:payment_history' %}">All transactions &amp; earnings</a></div>
-    {% for payment in pending_teacher_payments %}
-      <article class="glass-soft p-4 mb-3"><div class="flex flex-wrap justify-between gap-2"><strong>{{ payment.resource.title|default:payment.session.title|default:payment.session_title|default:payment.classroom.name }}</strong><span>PKR {{ payment.amount }} · {{ payment.get_method_display }}</span></div><p class="text-sm mt-1">{{ payment.student.get_full_name|default:payment.student.username }} · Reference {{ payment.transaction_reference }}</p><a class="text-sm grad-text" href="{% url 'market:payment_receipt' payment.id %}">View submitted proof</a>
-        <div class="flex flex-wrap gap-3 mt-3"><form method="post" action="{% url 'teachers:payment_decide' payment.id %}">{% csrf_token %}<button class="btn btn-primary" name="decision" value="approve" type="submit">Approve payment</button></form><form method="post" action="{% url 'teachers:payment_decide' payment.id %}" class="flex flex-wrap gap-2">{% csrf_token %}<input type="hidden" name="decision" value="reject"><input class="field" name="reason" maxlength="500" placeholder="Required rejection reason" required><button class="btn btn-ghost" type="submit">Reject</button></form></div>
-      </article>
-    {% empty %}<p class="text-sm" style="color:var(--txt-faint)">No manual payments are waiting for review.</p>{% endfor %}
+  <section class="glass p-5 mt-5 teacher-payment-review">
+    <header class="teacher-payment-review__header">
+      <div>
+        <p class="teacher-payment-review__eyebrow">ACTION NEEDED</p>
+        <h2 class="font-display font-semibold">Teacher payment verification</h2>
+        <p class="teacher-payment-review__intro">Check the submitted proof before approving. Rejections need a reason for the student.</p>
+      </div>
+      <div class="teacher-payment-review__header-actions">
+        <span class="teacher-payment-review__count">{{ pending_teacher_payments|length }} pending</span>
+      </div>
+    </header>
+    <div class="teacher-payment-review__list">
+      {% for payment in pending_teacher_payments %}
+        <article class="teacher-payment-card">
+          <div class="teacher-payment-card__main">
+            <div class="teacher-payment-card__title-row">
+              <div class="min-w-0">
+                <p class="teacher-payment-card__eyebrow">PAYMENT REQUEST</p>
+                <h3 class="teacher-payment-card__title">{% include "marketplace/_payment_title.html" with payment=payment %}</h3>
+              </div>
+              <strong class="teacher-payment-card__amount">PKR {{ payment.amount }}</strong>
+            </div>
+            <dl class="teacher-payment-card__details">
+              <div><dt>Student</dt><dd>{{ payment.student.get_full_name|default:payment.student.username }}</dd></div>
+              <div><dt>Payment method</dt><dd>{{ payment.get_method_display }}</dd></div>
+              <div><dt>Transaction reference</dt><dd>{{ payment.transaction_reference|default:"Not provided" }}</dd></div>
+            </dl>
+            <div class="teacher-payment-card__proof-row">
+              <a class="teacher-payment-card__proof" href="{% url 'market:payment_receipt' payment.id %}">View submitted proof <span aria-hidden="true">↗</span></a>
+              <form method="post" action="{% url 'teachers:payment_decide' payment.id %}" class="teacher-payment-card__approve">
+                {% csrf_token %}
+                <button class="btn btn-primary" name="decision" value="approve" type="submit">Approve payment</button>
+              </form>
+            </div>
+          </div>
+          <div class="teacher-payment-card__actions">
+            <form method="post" action="{% url 'teachers:payment_decide' payment.id %}" class="teacher-payment-card__reject">
+              {% csrf_token %}
+              <input type="hidden" name="decision" value="reject">
+              <label for="payment-reason-{{ payment.id }}">Rejection reason</label>
+              <input class="field" id="payment-reason-{{ payment.id }}" name="reason" maxlength="500" placeholder="Explain what needs fixing" required>
+              <button class="btn btn-ghost" type="submit">Reject</button>
+            </form>
+          </div>
+        </article>
+      {% empty %}
+        <div class="teacher-payment-review__empty">
+          <span class="teacher-payment-review__empty-icon" aria-hidden="true">✓</span>
+          <div><strong>You're all caught up</strong><p>No manual payments are waiting for review.</p></div>
+        </div>
+      {% endfor %}
+    </div>
   </section>
 {% endif %}
 {% endblock %}

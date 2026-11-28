@@ -324,6 +324,8 @@ def guidance_request(request, teacher_id):
         g = form.save(commit=False)
         g.student, g.teacher, g.started_by = request.user, t.user, request.user
         g.save()
+        from apps.notifications.events import notify_guidance_message
+        notify_guidance_message(g, request.user)
         messages.success(request, 'Your message was sent. The teacher can reply here in the app.')
     return redirect('teachers:public_profile', teacher_id=t.id)
 
@@ -341,8 +343,12 @@ def _guidance_context(user, form=None):
         'messages',
         queryset=GuidanceMessage.objects.select_related('sender').order_by('sent_at', 'pk'),
     ))
+    from apps.notifications.models import Notification
     return {
         'items': conversations,
+        'message_notifications': Notification.objects.filter(
+            recipient=user, notification_type=Notification.Type.MESSAGE,
+        )[:4],
         'compose_form': form if form is not None else GuidanceComposeForm(user=user),
         'selected_recipient': form.cleaned_data.get('recipient') if form and form.is_bound else None,
         'is_teacher': user.is_verified_teacher,
@@ -413,6 +419,8 @@ def guidance_send(request):
         message=form.cleaned_data['message'],
         started_by=request.user,
     )
+    from apps.notifications.events import notify_guidance_message
+    notify_guidance_message(conversation, request.user)
     messages.success(request, 'Your message was sent.')
     return redirect(f"{reverse('market:my_guidance')}#conversation-{conversation.pk}")
 
@@ -422,11 +430,13 @@ def _add_guidance_reply(request, conversation, message_text):
     if not form.is_valid():
         messages.error(request, 'Enter a message of up to 2,000 characters before sending.')
         return False
-    GuidanceMessage.objects.create(
+    message = GuidanceMessage.objects.create(
         conversation=conversation,
         sender=request.user,
         body=form.cleaned_data['message'],
     )
+    from apps.notifications.events import notify_guidance_message
+    notify_guidance_message(conversation, request.user, message)
     conversation.status = (
         GuidanceRequest.Status.ANSWERED if request.user.is_teacher else GuidanceRequest.Status.OPEN
     )
@@ -1016,8 +1026,13 @@ def bank_transfer_submit(request, payment_id):
 
 @login_required
 def payment_result(request, payment_reference):
-    _student(request)
-    payment = get_object_or_404(Payment, reference=payment_reference, student=request.user)
+    if request.user.is_teacher:
+        payment = get_object_or_404(Payment, reference=payment_reference, teacher=request.user,
+                                    is_platform_payment=True)
+    else:
+        _student(request)
+        payment = get_object_or_404(Payment, reference=payment_reference, student=request.user,
+                                    is_platform_payment=False)
     return render(request, 'marketplace/payment_result.html', {'payment': payment})
 
 
@@ -1030,8 +1045,14 @@ def payment_history(request):
     else:
         raise PermissionDenied
     payments = payments.select_related('student', 'teacher', 'session', 'resource', 'classroom').order_by('-created_at')
-    return render(request, 'marketplace/payment_history.html', {'payments': payments,
-        'teacher_earnings': payments.filter(status=Payment.Status.CONFIRMED).aggregate(total=Sum('teacher_earning'))['total'] or 0})
+    from apps.notifications.models import Notification
+    return render(request, 'marketplace/payment_history.html', {
+        'payments': payments,
+        'payment_notifications': Notification.objects.filter(
+            recipient=request.user, notification_type=Notification.Type.PAYMENT,
+        )[:4],
+        'teacher_earnings': payments.filter(status=Payment.Status.CONFIRMED).aggregate(total=Sum('teacher_earning'))['total'] or 0,
+    })
 
 
 @login_required
@@ -1039,7 +1060,8 @@ def payment_receipt(request, payment_id):
     payment = get_object_or_404(Payment, pk=payment_id)
     allowed = request.user.is_admin_role or (
         payment.is_manual_teacher_payment and request.user.pk in (payment.student_id, payment.teacher_id)
-    ) or (not payment.is_manual_teacher_payment and request.user.is_admin_role)
+    ) or (payment.is_platform_payment and request.user.pk == payment.teacher_id) or (
+        not payment.is_manual_teacher_payment and request.user.is_admin_role)
     if not allowed:
         raise PermissionDenied
     if not payment.receipt:
@@ -1132,11 +1154,12 @@ def admin_queue(request):
 @require_POST
 def admin_payment(request, payment_id):
     try:
-        services.decide_payment(request.user, payment_id, request.POST.get('decision') == 'confirm')
+        services.decide_payment(request.user, payment_id, request.POST.get('decision') == 'confirm',
+                                request.POST.get('reason', ''))
         messages.success(request, 'Payment updated.')
     except MarketError as exc:
         messages.error(request, str(exc))
-    return redirect(f"{reverse('admin_panel:payment_reports')}#verification")
+    return redirect(f"{reverse('admin_panel:payment_reports')}#transactions")
 
 
 @admin_required

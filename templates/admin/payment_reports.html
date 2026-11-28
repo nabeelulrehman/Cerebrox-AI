@@ -2,15 +2,7 @@
 {% block title %}Payment Management{% endblock %}
 {% block content %}
 <h1 class="font-display text-2xl font-bold mb-4">Payment Management</h1>
-<nav class="glass p-3 mb-5 flex flex-wrap gap-3 text-sm" aria-label="Payment management sections">
-  <a class="grad-text" href="#platform-settings">Platform settings</a>
-  <a class="grad-text" href="#commission">Commission</a>
-  <a class="grad-text" href="#verification">Verification requests</a>
-  <a class="grad-text" href="#teacher-methods">Teacher payment details</a>
-  <a class="grad-text" href="#transactions">Transactions</a>
-  <a class="grad-text" href="#reviews">Reviews</a>
-</nav>
-
+{% include "notifications/_inline_list.html" with items=payment_notifications heading="Recent payment updates" filter="payment" %}
 <section class="grid sm:grid-cols-3 gap-3 mb-6">
   {% include "components/stat_card.html" with label="Gross approved" value=gross %}
   {% include "components/stat_card.html" with label="Platform commission" value=commission %}
@@ -20,28 +12,75 @@
   {% include "components/stat_card.html" with label="Rejected" value=rejected_count %}
 </section>
 
-<section id="platform-settings" class="glass p-5 mb-5">
-  <h2 class="font-display font-semibold mb-2">Platform payment settings</h2>
-  <p class="text-sm mb-4" style="color:var(--txt-dim)">Manage availability and bank transfer details for platform checkout.</p>
-  <form method="post" class="grid gap-4">{% csrf_token %}<input type="hidden" name="section" value="platform_payment_settings">
-    <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
-      <label class="flex gap-2 items-center"><input type="checkbox" name="jazzcash_enabled" {% if payment_config.jazzcash_enabled %}checked{% endif %}> JazzCash</label>
-      <label class="flex gap-2 items-center"><input type="checkbox" name="easypaisa_enabled" {% if payment_config.easypaisa_enabled %}checked{% endif %}> Easypaisa</label>
-      <label class="flex gap-2 items-center"><input type="checkbox" name="bank_transfer_enabled" {% if payment_config.bank_transfer_enabled %}checked{% endif %}> Bank transfer</label>
-      <label class="flex gap-2 items-center"><input type="checkbox" name="stripe_enabled" {% if payment_config.stripe_enabled %}checked{% endif %}> Stripe</label>
-    </div>
-    <div class="grid sm:grid-cols-2 gap-3">
-      <div><label class="label" for="bank_account_title">Bank account title</label><input class="field" id="bank_account_title" name="bank_account_title" maxlength="160" value="{{ payment_config.bank_account_title }}"></div>
-      <div><label class="label" for="bank_name">Bank name</label><input class="field" id="bank_name" name="bank_name" maxlength="160" value="{{ payment_config.bank_name }}"></div>
-      <div><label class="label" for="bank_iban">IBAN</label><input class="field" id="bank_iban" name="bank_iban" maxlength="64" value="{{ payment_config.bank_iban }}"></div>
-      <div><label class="label" for="bank_raast_id">Raast ID</label><input class="field" id="bank_raast_id" name="bank_raast_id" maxlength="100" value="{{ payment_config.bank_raast_id }}"></div>
-      <div class="sm:col-span-2"><label class="label" for="bank_instructions">Transfer instructions</label><textarea class="field" id="bank_instructions" name="bank_instructions" rows="3">{{ payment_config.bank_instructions }}</textarea></div>
-    </div>
-    <button class="btn btn-primary w-max" type="submit">Save payment settings</button>
-  </form>
+<section class="glass p-5 mb-5">
+  <h2 class="font-display font-semibold text-lg mb-3">Teacher financial statements</h2>
+  <div class="overflow-x-auto"><table class="w-full min-w-[760px] text-sm"><thead><tr class="text-left border-b" style="border-color:var(--line)"><th class="py-2 pr-3">Teacher</th><th class="py-2 pr-3">Net earnings</th><th class="py-2 pr-3">Commission</th><th class="py-2 pr-3">Outstanding to platform</th><th class="py-2">Pending student payments</th></tr></thead><tbody>{% for row in financial_statements %}<tr class="border-b" style="border-color:var(--line)"><td class="py-2 pr-3">{{ row.teacher.get_full_name|default:row.teacher.username }}</td><td class="py-2 pr-3">PKR {{ row.total_earnings }}</td><td class="py-2 pr-3">PKR {{ row.platform_commission }}</td><td class="py-2 pr-3">PKR {{ row.outstanding_platform }}</td><td class="py-2">PKR {{ row.pending_earnings }}</td></tr>{% empty %}<tr><td colspan="5" class="py-3">No teachers found.</td></tr>{% endfor %}</tbody></table></div>
 </section>
 
-<section id="commission" class="glass p-5 mb-5">
+<section id="transactions" class="mb-5">
+  <div class="mb-4"><h2 class="font-display text-xl font-bold">Transaction records</h2><p class="text-sm mt-1" style="color:var(--txt-dim)">Key details for each payment</p></div>
+  <section class="glass p-4 mb-4 grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+    <div><label class="label">Status</label><select class="field" name="status" form="payment-filter"><option value="">All</option>{% for value,label in status_choices %}<option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+    <div><label class="label">Teacher</label><select class="field" name="teacher" form="payment-filter"><option value="">All</option>{% for item in teachers %}<option value="{{ item.id }}" {% if teacher_id == item.id|stringformat:'s' %}selected{% endif %}>{{ item.username }}</option>{% endfor %}</select></div>
+    <div><label class="label">Student</label><select class="field" name="student" form="payment-filter"><option value="">All</option>{% for item in students %}<option value="{{ item.id }}" {% if student_id == item.id|stringformat:'s' %}selected{% endif %}>{{ item.username }}</option>{% endfor %}</select></div>
+    <div><label class="label">From</label><input class="field" type="date" name="from" value="{{ date_from }}" form="payment-filter"></div>
+    <div><label class="label">To</label><input class="field" type="date" name="to" value="{{ date_to }}" form="payment-filter"></div>
+    <form method="get" id="payment-filter" class="flex items-end gap-2"><button class="btn btn-primary">Apply filters</button><a class="btn btn-ghost" href="{% url 'admin_panel:payment_reports' %}#transactions">Reset</a></form>
+  </section>
+  <div class="grid gap-3">{% for payment in payments %}
+    <article id="payment-{{ payment.pk }}" class="glass p-4 sm:p-5 grid gap-4 sm:grid-cols-[1fr_auto] sm:items-center">
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-center gap-2"><strong class="text-base">{% if payment.is_platform_payment %}Teacher platform dues{% else %}{% include "marketplace/_payment_title.html" with payment=payment %}{% endif %}</strong><span class="pill">{{ payment.get_status_display }}</span></div>
+        <p class="text-sm mt-2">{% if payment.is_platform_payment %}{{ payment.teacher.username }} <span aria-hidden="true">→</span> CerebroX-AI{% else %}{{ payment.student.username }} <span aria-hidden="true">→</span> {{ payment.teacher.username }}{% endif %}</p>
+        <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs mt-2" style="color:var(--txt-dim)"><span>Ref: {{ payment.transaction_reference|default:payment.reference }}</span><span>{{ payment.get_method_display|default:"Payment" }}</span><span>{{ payment.created_at|date:"M j, Y · H:i" }}</span>{% if payment.review_note %}<span>{{ payment.review_note }}</span>{% endif %}</div>
+      </div>
+      <div class="flex flex-wrap items-center justify-between sm:justify-end gap-3 border-t sm:border-t-0 pt-3 sm:pt-0" style="border-color:var(--line)"><strong class="text-lg whitespace-nowrap">PKR {{ payment.amount }}</strong>{% if payment.receipt %}<a class="btn btn-ghost !py-1" href="{% url 'market:payment_receipt' payment.id %}">View proof</a>{% endif %}{% if payment.is_platform_payment and payment.status == 'pending' and payment.method != 'stripe' %}<form method="post" action="{% url 'market:admin_payment' payment.id %}" class="flex flex-wrap gap-2">{% csrf_token %}<input class="field max-w-48" name="reason" placeholder="Rejection reason" aria-label="Rejection reason" maxlength="500"><button class="btn btn-primary !py-1" name="decision" value="confirm">Verify</button><button class="btn btn-ghost !py-1" name="decision" value="reject">Reject</button></form>{% endif %}</div>
+    </article>
+  {% empty %}<p class="glass p-4">No transactions match these filters.</p>{% endfor %}</div>
+  {% if payment_page_obj.paginator.num_pages > 1 %}<nav class="flex flex-wrap justify-between items-center gap-3 mt-4" aria-label="Payment transaction pages"><span class="text-sm" style="color:var(--txt-dim)">Page {{ payment_page_obj.number }} of {{ payment_page_obj.paginator.num_pages }} · {{ payment_page_obj.paginator.count }} transactions</span><div class="flex gap-2">{% if payment_page_obj.has_previous %}<a class="btn btn-ghost" href="?status={{ status|urlencode }}&teacher={{ teacher_id|urlencode }}&student={{ student_id|urlencode }}&from={{ date_from|urlencode }}&to={{ date_to|urlencode }}&page={{ payment_page_obj.previous_page_number }}#transactions">Previous</a>{% endif %}{% if payment_page_obj.has_next %}<a class="btn btn-ghost" href="?status={{ status|urlencode }}&teacher={{ teacher_id|urlencode }}&student={{ student_id|urlencode }}&from={{ date_from|urlencode }}&to={{ date_to|urlencode }}&page={{ payment_page_obj.next_page_number }}#transactions">Next</a>{% endif %}</div></nav>{% endif %}
+</section>
+<section id="reviews" class="glass p-5">
+  <h2 class="font-display font-semibold mb-3">Reviews awaiting moderation</h2>
+  {% for review in reviews %}<article class="glass-soft p-4 mb-3 flex flex-wrap justify-between items-center gap-3"><span class="text-sm">{{ review.rating }}★ {{ review.student.username }} → {{ review.teacher.username }}: {{ review.comment }}</span>
+    <form method="post" action="{% url 'market:admin_review' review.id %}" class="flex gap-2">{% csrf_token %}<button name="decision" value="approve" class="btn btn-primary !py-1">Approve</button><button name="decision" value="reject" class="btn btn-ghost !py-1">Reject</button></form>
+  </article>{% empty %}<p class="text-sm" style="color:var(--txt-faint)">No reviews awaiting moderation.</p>{% endfor %}
+</section>
+
+<section id="platform-settings" class="glass p-5 mt-5">
+  <h2 class="font-display font-semibold mb-2">Platform payment settings</h2>
+  <p class="text-sm mb-4" style="color:var(--txt-dim)">Choose a payment method to manage its availability and receiving account.</p>
+  <form method="post" class="grid gap-4" data-platform-payment-settings>{% csrf_token %}<input type="hidden" name="section" value="platform_payment_settings">
+    <div><label class="label" for="platform_payment_method">Payment method</label><select class="field" id="platform_payment_method" name="payment_method" data-payment-method-select><option value="jazzcash">JazzCash</option><option value="easypaisa">EasyPaisa</option><option value="bank">Bank transfer</option></select></div>
+    <section class="grid gap-3" data-payment-method-panel="jazzcash">
+      <div class="grid sm:grid-cols-2 gap-3"><div><label class="label" for="jazzcash_account_title">Account title</label><input class="field" id="jazzcash_account_title" name="jazzcash_account_title" maxlength="160" value="{{ payment_config.jazzcash_account_title }}"></div><div><label class="label" for="jazzcash_account_number">JazzCash number</label><input class="field" id="jazzcash_account_number" name="jazzcash_account_number" maxlength="40" value="{{ payment_config.jazzcash_account_number }}"></div></div>
+    </section>
+    <section class="grid gap-3" data-payment-method-panel="easypaisa" hidden>
+      <div class="grid sm:grid-cols-2 gap-3"><div><label class="label" for="easypaisa_account_title">Account title</label><input class="field" id="easypaisa_account_title" name="easypaisa_account_title" maxlength="160" value="{{ payment_config.easypaisa_account_title }}"></div><div><label class="label" for="easypaisa_account_number">EasyPaisa number</label><input class="field" id="easypaisa_account_number" name="easypaisa_account_number" maxlength="40" value="{{ payment_config.easypaisa_account_number }}"></div></div>
+    </section>
+    <section class="grid gap-3" data-payment-method-panel="bank" hidden>
+      <div class="grid sm:grid-cols-2 gap-3">
+        <div><label class="label" for="bank_account_title">Account title</label><input class="field" id="bank_account_title" name="bank_account_title" maxlength="160" value="{{ payment_config.bank_account_title }}"></div>
+        <div><label class="label" for="bank_name">Bank name</label><input class="field" id="bank_name" name="bank_name" maxlength="160" value="{{ payment_config.bank_name }}"></div>
+        <div><label class="label" for="bank_iban">IBAN</label><input class="field" id="bank_iban" name="bank_iban" maxlength="64" value="{{ payment_config.bank_iban }}"></div>
+        <div><label class="label" for="bank_raast_id">Raast ID</label><input class="field" id="bank_raast_id" name="bank_raast_id" maxlength="100" value="{{ payment_config.bank_raast_id }}"></div>
+        <div class="sm:col-span-2"><label class="label" for="bank_instructions">Transfer instructions</label><textarea class="field" id="bank_instructions" name="bank_instructions" rows="3">{{ payment_config.bank_instructions }}</textarea></div>
+      </div>
+    </section>
+    <button class="btn btn-primary w-max justify-self-end" type="submit">Save payment settings</button>
+  </form>
+  <script>
+    (() => {
+      const form = document.querySelector('[data-platform-payment-settings]');
+      if (!form) return;
+      const select = form.querySelector('[data-payment-method-select]');
+      const panels = form.querySelectorAll('[data-payment-method-panel]');
+      const update = () => panels.forEach(panel => { panel.hidden = panel.dataset.paymentMethodPanel !== select.value; });
+      select.addEventListener('change', update);
+      update();
+    })();
+  </script>
+</section>
+<section id="commission" class="glass p-5 mt-5 mb-5">
   <h2 class="font-display font-semibold mb-2">Commission management</h2>
   <p class="text-sm mb-3" style="color:var(--txt-dim)">New payments store this rate at submission; previous transaction amounts remain unchanged.</p>
   <form method="post" action="{% url 'admin_panel:commission_update' %}" class="flex flex-wrap items-end gap-3">{% csrf_token %}
@@ -50,64 +89,4 @@
   </form>
 </section>
 
-<section id="verification" class="glass p-5 mb-5">
-  <h2 class="font-display font-semibold mb-2">Verification requests</h2>
-  <p class="text-sm mb-4" style="color:var(--txt-dim)">Platform bank transfers can be reviewed here. Teacher submitted transfers remain pending until their teacher reviews them; provider payments await a verified webhook.</p>
-  {% for p in pending_verifications %}
-  <article class="glass-soft p-4 mb-3 flex flex-wrap justify-between items-center gap-3">
-    <div class="text-sm min-w-0">
-      <strong>{{ p.reference }}</strong> — {{ p.student.username }} → {{ p.teacher.username }} — PKR {{ p.amount }} — {{ p.get_method_display|default:"Manual" }}
-      <div>{{ p.session.title|default:p.session_title|default:p.resource.title|default:p.classroom.name|default:'Payment' }}</div>
-      {% if p.transaction_reference %}<div>Transfer ref: {{ p.transaction_reference }}</div>{% endif %}
-      {% if p.receipt %}<a class="grad-text" href="{% url 'market:payment_receipt' p.id %}">View payment proof</a>{% endif %}
-    </div>
-    {% if p.is_manual_teacher_payment %}<span class="pill">Waiting for teacher verification</span>
-    {% elif not p.method or p.method == 'bank_transfer' %}
-      <form method="post" action="{% url 'market:admin_payment' p.id %}" class="flex gap-2">{% csrf_token %}<button name="decision" value="confirm" class="btn btn-primary !py-1">Confirm</button><button name="decision" value="reject" class="btn btn-ghost !py-1">Reject</button></form>
-    {% else %}<span class="pill">Waiting for verified provider payment</span>{% endif %}
-  </article>
-  {% empty %}<p class="text-sm" style="color:var(--txt-faint)">No pending verification requests.</p>{% endfor %}
-</section>
-
-<section id="teacher-methods" class="glass p-5 mb-5">
-  <h2 class="font-display font-semibold mb-3">Teacher payment details</h2>
-  {% for method in teacher_payment_methods %}
-  <article class="glass-soft p-4 mb-3 flex flex-wrap justify-between gap-3">
-    <div><strong>{{ method.teacher.get_full_name|default:method.teacher.username }}</strong> · {{ method.get_method_display }}
-      <div class="text-sm">Account holder: {{ method.account_title }}{% if method.bank_name %} · {{ method.bank_name }}{% endif %}</div>
-      {% if method.account_number %}<div class="text-sm">Account: {{ method.account_number }}</div>{% endif %}
-      {% if method.iban %}<div class="text-sm">IBAN: {{ method.iban }}</div>{% endif %}
-    </div>
-    <span class="pill">{% if method.is_active %}Active{% else %}Inactive{% endif %}</span>
-  </article>
-  {% empty %}<p class="text-sm" style="color:var(--txt-faint)">Teachers have not added payment details yet.</p>{% endfor %}
-</section>
-
-<section id="transactions" class="mb-5">
-  <h2 class="font-display text-xl font-bold mb-3">Transaction records</h2>
-  <section class="glass p-4 mb-4 grid sm:grid-cols-3 gap-3">
-    <div><label class="label">Status</label><select class="field" name="status" form="payment-filter"><option value="">All</option>{% for value,label in status_choices %}<option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
-    <div><label class="label">Teacher</label><select class="field" name="teacher" form="payment-filter"><option value="">All</option>{% for item in teachers %}<option value="{{ item.id }}" {% if teacher_id == item.id|stringformat:'s' %}selected{% endif %}>{{ item.username }}</option>{% endfor %}</select></div>
-    <div><label class="label">Student</label><select class="field" name="student" form="payment-filter"><option value="">All</option>{% for item in students %}<option value="{{ item.id }}" {% if student_id == item.id|stringformat:'s' %}selected{% endif %}>{{ item.username }}</option>{% endfor %}</select></div>
-    <div><label class="label">From</label><input class="field" type="date" name="from" value="{{ date_from }}" form="payment-filter"></div>
-    <div><label class="label">To</label><input class="field" type="date" name="to" value="{{ date_to }}" form="payment-filter"></div>
-    <form method="get" id="payment-filter" class="flex items-end"><button class="btn btn-primary">Filter transactions</button></form>
-  </section>
-  <div class="grid gap-3">{% for payment in payments %}
-    <article class="glass p-4">
-      <div class="flex flex-wrap justify-between gap-2"><strong>{{ payment.session.title|default:payment.session_title|default:payment.resource.title|default:payment.classroom.name|default:'Payment' }}</strong><span class="pill">{{ payment.get_status_display }}</span></div>
-      <p class="text-sm mt-2">{{ payment.student.username }} → {{ payment.teacher.username }} · {{ payment.get_method_display }} · {% if payment.is_manual_teacher_payment %}Teacher transfer{% elif payment.method == 'stripe' %}Stripe gateway{% else %}Platform transfer{% endif %} · PKR {{ payment.amount }} · {{ payment.created_at }}</p>
-      <p class="text-sm">Reference: {{ payment.transaction_reference|default:payment.reference }} · Commission {{ payment.commission_percentage }}% (PKR {{ payment.platform_commission }}) · Teacher earns PKR {{ payment.teacher_earning }}</p>
-      {% if payment.receipt %}<a class="grad-text text-sm" href="{% url 'market:payment_receipt' payment.id %}">View proof</a>{% endif %}
-      {% for audit in payment.status_audits.all %}<p class="text-xs mt-2" style="color:var(--txt-dim)">{{ audit.created_at }} · {{ audit.old_status }} → {{ audit.new_status }}{% if audit.actor %} · {{ audit.actor.username }}{% endif %}{% if audit.note %} · {{ audit.note }}{% endif %}</p>{% endfor %}
-    </article>
-  {% empty %}<p class="glass p-4">No transactions match these filters.</p>{% endfor %}</div>
-</section>
-
-<section id="reviews" class="glass p-5">
-  <h2 class="font-display font-semibold mb-3">Reviews awaiting moderation</h2>
-  {% for review in reviews %}<article class="glass-soft p-4 mb-3 flex flex-wrap justify-between items-center gap-3"><span class="text-sm">{{ review.rating }}★ {{ review.student.username }} → {{ review.teacher.username }}: {{ review.comment }}</span>
-    <form method="post" action="{% url 'market:admin_review' review.id %}" class="flex gap-2">{% csrf_token %}<button name="decision" value="approve" class="btn btn-primary !py-1">Approve</button><button name="decision" value="reject" class="btn btn-ghost !py-1">Reject</button></form>
-  </article>{% empty %}<p class="text-sm" style="color:var(--txt-faint)">No reviews awaiting moderation.</p>{% endfor %}
-</section>
 {% endblock %}

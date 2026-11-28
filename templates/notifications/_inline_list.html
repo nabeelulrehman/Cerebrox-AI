@@ -1,0 +1,9 @@
+{% if items %}
+<section id="recent-{{ filter }}-notifications" class="notification-inline-list" aria-label="Recent {{ heading|lower }}">
+  <h2 class="font-display font-semibold">{{ heading }}</h2>
+  {% for item in items %}<a href="{% url 'notifications:open' item.pk %}" class="notification-inline-list__item{% if not item.is_read %} is-unread{% endif %}">
+    <span><strong>{{ item.title }}</strong><small>{{ item.message }}</small><time datetime="{{ item.created_at|date:'c' }}">{{ item.created_at|date:'d M Y, g:i A' }}</time></span>
+    <span class="notification-item__state{% if not item.is_read %} is-unread{% endif %}">{% if item.is_read %}Read{% else %}Unread{% endif %}</span>
+  </a>{% endfor %}
+</section>
+{% endif %}

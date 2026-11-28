@@ -22,6 +22,25 @@
     </div>
     <div class="site-header-actions flex items-center gap-2">
       {% if user.is_authenticated %}
+        <div class="notification-menu" data-notification-menu>
+          <button type="button" class="notification-trigger" aria-label="Notifications" aria-haspopup="true" aria-expanded="false" aria-controls="notification-dropdown" data-notification-trigger>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg>
+            <span class="notification-badge" data-notification-count {% if not unread_notification_count %}hidden{% endif %}>{{ unread_notification_count }}</span>
+          </button>
+          <section class="notification-dropdown" id="notification-dropdown" aria-label="Recent notifications" data-notification-dropdown hidden>
+            <header class="notification-dropdown__header"><strong>Notifications</strong><form method="post" action="{% url 'notifications:read_all' %}" data-notification-read-all>{% csrf_token %}<button type="submit">Mark all as read</button></form></header>
+            <div class="notification-dropdown__items" data-notification-items><p class="notification-empty">Loading notifications…</p></div>
+            <nav class="notification-dropdown__all" aria-label="Notification destinations">
+              {% if user.is_admin_role %}
+                <a href="{% url 'admin_panel:payment_reports' %}">Payments</a>
+              {% elif user.is_teacher %}
+                <a href="{% url 'market:teacher_inbox' %}">Messages</a><a href="{% url 'market:payment_history' %}">Payments</a>
+              {% else %}
+                <a href="{% url 'market:my_guidance' %}">Messages</a><a href="{% url 'market:payment_history' %}">Payments</a>
+              {% endif %}
+            </nav>
+          </section>
+        </div>
         <div class="site-profile-menu" data-profile-menu>
           <span class="site-profile-name">{{ user.first_name|default:user.username }}</span>
           <button type="button" class="site-avatar" aria-label="Open profile menu" aria-haspopup="true" aria-expanded="false" aria-controls="site-profile-dropdown" data-profile-menu-trigger>
@@ -71,4 +90,5 @@
 {% endif %}
 {% if user.is_authenticated %}
 <script src="{% static 'js/profile_menu.js' %}?v=3" defer></script>
+<script src="{% static 'js/notifications.js' %}?v=2" defer></script>
 {% endif %}

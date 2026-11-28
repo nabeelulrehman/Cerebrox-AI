@@ -26,16 +26,27 @@ def teacher_register(request):
 def dashboard(request):
     from apps.classrooms.models import Classroom, Enrollment
     profile = TeacherProfile.objects.filter(user=request.user).first()
+    ctx = {
+        'profile': profile,
+        'financial_summary': {'total_earnings': 0, 'received_payments': 0,
+            'pending_earnings': 0, 'platform_commission': 0, 'outstanding_platform': 0},
+        'recent_session_payments': [],
+        'pending_teacher_payments': [],
+        'classes': [],
+        'pending_requests': 0,
+        'student_count': 0,
+    }
     if profile is None:
         messages.error(
             request,
             'Your teacher profile is missing. Please contact an administrator to restore it.',
         )
-        return render(request, 'teacher/dashboard.html', {'profile': None}, status=409)
-    ctx = {'profile': profile}
+        return render(request, 'teacher/dashboard.html', ctx, status=409)
     from apps.marketplace.models import Payment
+    from apps.marketplace.services import teacher_financial_summary
+    ctx['financial_summary'] = teacher_financial_summary(request.user)
     ctx['recent_session_payments'] = Payment.objects.filter(
-        teacher=request.user,
+        teacher=request.user, is_platform_payment=False,
     ).select_related(
         'student', 'session', 'resource', 'classroom')[:5]
     ctx['pending_teacher_payments'] = Payment.objects.filter(
@@ -51,6 +62,76 @@ def dashboard(request):
                 classroom__teacher=request.user, status=Enrollment.Status.ACTIVE).count(),
         })
     return render(request, 'teacher/dashboard.html', ctx)
+
+
+@teacher_required
+def earnings(request):
+    from django.core.paginator import Paginator
+    from django.utils.dateparse import parse_date
+    from apps.marketplace.models import Payment, PaymentMethodConfiguration
+    from apps.marketplace.services import MarketError, submit_platform_payment, teacher_financial_summary
+    from apps.teachers.models import TeacherPaymentMethod
+    summary = teacher_financial_summary(request.user)
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        try:
+            if action == 'pay_platform':
+                payment = submit_platform_payment(request.user, method=request.POST.get('method', ''),
+                    transaction_reference=request.POST.get('transaction_reference', ''),
+                    receipt=request.FILES.get('receipt'))
+                if payment.method == Payment.Method.STRIPE:
+                    from apps.marketplace.payment_gateways.stripe_gateway import create_checkout
+                    payment.checkout_url = create_checkout(payment, request)
+                    return redirect(payment.checkout_url)
+                messages.success(request, 'Platform payment submitted. It will reduce your dues after admin verification.')
+            else:
+                messages.error(request, 'Choose a valid financial action.')
+        except (MarketError, ValueError, ArithmeticError) as exc:
+            messages.error(request, str(exc) or 'Enter a valid amount.')
+        return redirect('teachers:earnings')
+
+    config = PaymentMethodConfiguration.objects.filter(pk=1).first()
+    from apps.marketplace.payment_gateways.base import payment_methods as configured_gateways
+    stripe_ready = next((m['enabled'] for m in configured_gateways()
+                         if m['code'] == Payment.Method.STRIPE), False)
+    pay_methods = []
+    if config and config.jazzcash_enabled:
+        pay_methods.append((Payment.Method.JAZZCASH, 'JazzCash'))
+    if config and config.easypaisa_enabled:
+        pay_methods.append((Payment.Method.EASYPAISA, 'Easypaisa'))
+    if config and config.bank_transfer_enabled:
+        pay_methods.append((Payment.Method.BANK_TRANSFER, 'Bank Transfer'))
+    if stripe_ready:
+        pay_methods.append((Payment.Method.STRIPE, 'Stripe'))
+
+    payments = Payment.objects.filter(teacher=request.user).select_related(
+        'student', 'session', 'resource', 'classroom')
+    status = request.GET.get('status', '')
+    date_from, date_to = request.GET.get('from', ''), request.GET.get('to', '')
+    if status in Payment.Status.values:
+        payments = payments.filter(status=status)
+    from_date, to_date = parse_date(date_from) if date_from else None, parse_date(date_to) if date_to else None
+    if from_date:
+        payments = payments.filter(created_at__date__gte=from_date)
+    if to_date:
+        payments = payments.filter(created_at__date__lte=to_date)
+    transactions = []
+    for payment in payments:
+        transactions.append({'at': payment.confirmed_at or payment.reviewed_at or payment.created_at, 'reference': payment.reference,
+            'amount': payment.amount, 'status': payment.get_status_display(), 'status_code': payment.status,
+            'method': payment.get_method_display() or 'Not selected',
+            'type': 'Platform payment' if payment.is_platform_payment else 'Earning',
+            'counterparty': 'CerebroX-AI' if payment.is_platform_payment else
+                payment.student.get_full_name() or payment.student.username,
+            'object': payment})
+    transactions.sort(key=lambda item: (item['at'], item['reference']), reverse=True)
+    page_obj = Paginator(transactions, 50).get_page(request.GET.get('page'))
+    return render(request, 'teacher/earnings.html', {
+        'summary': summary, 'transactions': page_obj.object_list, 'page_obj': page_obj, 'status': status,
+        'date_from': date_from, 'date_to': date_to, 'status_choices': Payment.Status.choices,
+        'pay_methods': pay_methods,
+        'payment_config': config, 'stripe_ready': stripe_ready,
+    })
 
 
 @teacher_required

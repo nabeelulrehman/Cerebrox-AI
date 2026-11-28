@@ -1,0 +1,1 @@
+{% if payment.session %}{{ payment.session.title }}{% elif payment.session_title %}{{ payment.session_title }}{% elif payment.resource %}{{ payment.resource.title }}{% elif payment.classroom %}{{ payment.classroom.name }}{% else %}Payment{% endif %}

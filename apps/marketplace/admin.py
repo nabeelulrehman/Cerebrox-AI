@@ -25,7 +25,8 @@ class PaymentAdmin(admin.ModelAdmin):
     list_filter = ('method', 'status')
     search_fields = ('reference', 'transaction_reference', 'student__username', 'teacher__username')
     readonly_fields = ('reference', 'created_at', 'confirmed_at', 'confirmed_by', 'provider_reference',
-                       'provider_session_id', 'checkout_url', 'receipt')
+                       'provider_session_id', 'checkout_url', 'receipt', 'amount', 'commission_percentage',
+                       'platform_commission', 'teacher_earning', 'is_platform_payment', 'status')
 
 
 for m in (Resource, GuidanceRequest, TeachingSession, SessionBooking, SessionAttendance, Review):

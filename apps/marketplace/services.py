@@ -563,29 +563,40 @@ def request_purchase(student, resource):
 
 
 @transaction.atomic
-def decide_payment(admin, payment_id, confirm: bool):
+def decide_payment(admin, payment_id, confirm: bool, reason=''):
     p = Payment.objects.select_for_update().filter(pk=payment_id, status=Payment.Status.PENDING).first()
     if p is None:
         raise MarketError('Payment not found or already decided.')
     if p.is_manual_teacher_payment:
         raise MarketError('Teacher-to-student payments can only be verified by their owning teacher.')
+    if p.is_platform_payment and p.method == Payment.Method.STRIPE:
+        raise MarketError('Stripe payments are confirmed only by the verified provider webhook.')
     if p.method and p.method != Payment.Method.BANK_TRANSFER and p.session_id:
         raise MarketError('Gateway payments are decided only by the verified provider webhook.')
-    if confirm and p.method == Payment.Method.BANK_TRANSFER and not (
+    if confirm and (p.method == Payment.Method.BANK_TRANSFER or p.is_platform_payment) and not (
         p.transaction_reference and p.receipt
     ):
-        raise MarketError('A bank transfer cannot be approved before its receipt and transaction reference are submitted.')
+        raise MarketError('This manual payment needs a receipt and transaction reference before approval.')
+    if p.is_platform_payment and not confirm and not reason.strip():
+        raise MarketError('A rejection reason is required.')
     if p.method == Payment.Method.BANK_TRANSFER:
         p.reviewed_at, p.reviewed_by = timezone.now(), admin
     old_status = p.status
     p.status = Payment.Status.CONFIRMED if confirm else Payment.Status.REJECTED
     p.confirmed_at, p.confirmed_by = timezone.now(), admin
+    if p.is_platform_payment:
+        p.review_note = reason.strip()[:500] if not confirm else ''
     fields = ['status', 'confirmed_at', 'confirmed_by']
     if p.method == Payment.Method.BANK_TRANSFER:
         fields += ['reviewed_at', 'reviewed_by']
+    if p.is_platform_payment:
+        p.reviewed_at, p.reviewed_by = timezone.now(), admin
+        fields += ['reviewed_at', 'reviewed_by', 'review_note']
     p.save(update_fields=fields)
-    PaymentStatusAudit.objects.create(payment=p, actor=admin, old_status=old_status,
-                                      new_status=p.status, note=p.review_note)
+    audit = PaymentStatusAudit.objects.create(payment=p, actor=admin, old_status=old_status,
+                                              new_status=p.status, note=p.review_note)
+    from apps.notifications.events import notify_payment_status
+    notify_payment_status(p, audit, actor=admin)
     if p.session_id:
         SessionBooking.objects.filter(session_id=p.session_id, student=p.student).update(
             status=SessionBooking.Status.CONFIRMED if confirm else SessionBooking.Status.CANCELLED)
@@ -698,9 +709,11 @@ def submit_teacher_payment(student, *, resource=None, session=None, classroom=No
     if classroom:
         Enrollment.objects.get_or_create(classroom=classroom, student=student,
             defaults={'status': Enrollment.Status.REQUESTED})
-    PaymentStatusAudit.objects.create(payment=payment, actor=student,
+    audit = PaymentStatusAudit.objects.create(payment=payment, actor=student,
         old_status=Payment.Status.PENDING, new_status=Payment.Status.PENDING,
         note='Manual teacher payment submitted; awaiting teacher verification.')
+    from apps.notifications.events import notify_payment_submitted
+    notify_payment_submitted(payment, audit)
     return payment
 
 
@@ -722,8 +735,10 @@ def decide_teacher_payment(teacher, payment_id, *, approve, reason=''):
     payment.confirmed_by = teacher if approve else None
     payment.review_note = reason[:500]
     payment.save(update_fields=['status', 'reviewed_at', 'reviewed_by', 'confirmed_at', 'confirmed_by', 'review_note'])
-    PaymentStatusAudit.objects.create(payment=payment, actor=teacher, old_status=old_status,
+    audit = PaymentStatusAudit.objects.create(payment=payment, actor=teacher, old_status=old_status,
                                       new_status=payment.status, note=reason[:500])
+    from apps.notifications.events import notify_payment_status
+    notify_payment_status(payment, audit, actor=teacher)
     if payment.session_id:
         SessionBooking.objects.filter(session_id=payment.session_id, student=payment.student,
             status=SessionBooking.Status.PENDING_PAYMENT).update(
@@ -809,6 +824,12 @@ def submit_bank_transfer(payment, student, transaction_reference, receipt):
             payment.save(update_fields=['transaction_reference', 'receipt'])
     except IntegrityError as exc:
         raise MarketError('That transaction reference was already submitted.') from exc
+    audit = PaymentStatusAudit.objects.create(
+        payment=payment, actor=student, old_status=Payment.Status.PENDING,
+        new_status=Payment.Status.PENDING, note='Bank transfer details submitted for admin review.',
+    )
+    from apps.notifications.events import notify_payment_submitted
+    notify_payment_submitted(payment, audit)
     return payment
 
 
@@ -829,8 +850,10 @@ def confirm_provider_payment(payment_reference, provider_session_id, amount_mino
     payment.confirmed_at = timezone.now()
     payment.provider_reference = provider_reference[:128]
     payment.save(update_fields=['status', 'confirmed_at', 'provider_reference'])
-    PaymentStatusAudit.objects.create(payment=payment, actor=None, old_status=old_status,
+    audit = PaymentStatusAudit.objects.create(payment=payment, actor=None, old_status=old_status,
                                       new_status=payment.status, note='Verified by Stripe webhook.')
+    from apps.notifications.events import notify_payment_status
+    notify_payment_status(payment, audit)
     if payment.session_id:
         SessionBooking.objects.filter(session_id=payment.session_id, student=payment.student,
                                       status=SessionBooking.Status.PENDING_PAYMENT).update(
@@ -851,14 +874,107 @@ def reject_provider_payment(payment_reference, provider_session_id):
     old_status = payment.status
     payment.status = Payment.Status.REJECTED
     payment.save(update_fields=['status'])
-    PaymentStatusAudit.objects.create(payment=payment, actor=None, old_status=old_status,
+    audit = PaymentStatusAudit.objects.create(payment=payment, actor=None, old_status=old_status,
                                       new_status=payment.status, note='Rejected by Stripe webhook.')
+    from apps.notifications.events import notify_payment_status
+    notify_payment_status(payment, audit)
     if payment.session_id:
         SessionBooking.objects.filter(session_id=payment.session_id, student=payment.student,
                                       status=SessionBooking.Status.PENDING_PAYMENT).update(
             status=SessionBooking.Status.CANCELLED,
         )
     return True
+
+
+def teacher_financial_summary(teacher):
+    from decimal import Decimal
+    from django.db.models import Sum
+    zero = Decimal('0.00')
+    confirmed_sales = Payment.objects.filter(teacher=teacher, is_platform_payment=False,
+        status=Payment.Status.CONFIRMED)
+    pending_sales = Payment.objects.filter(teacher=teacher, is_platform_payment=False,
+        status=Payment.Status.PENDING)
+    earned = confirmed_sales.aggregate(v=Sum('teacher_earning'))['v'] or zero
+    received = confirmed_sales.aggregate(v=Sum('amount'))['v'] or zero
+    pending = pending_sales.aggregate(v=Sum('teacher_earning'))['v'] or zero
+    commission = confirmed_sales.aggregate(v=Sum('platform_commission'))['v'] or zero
+    remitted = Payment.objects.filter(teacher=teacher, is_platform_payment=True,
+        status=Payment.Status.CONFIRMED).aggregate(v=Sum('amount'))['v'] or zero
+    return {
+        'total_earnings': earned,
+        'received_payments': received,
+        'pending_earnings': pending,
+        'platform_commission': commission,
+        'outstanding_platform': max(zero, commission - remitted),
+    }
+
+
+@transaction.atomic
+def submit_platform_payment(teacher, *, method, transaction_reference='', receipt=None):
+    from decimal import Decimal
+    from .models import PaymentMethodConfiguration
+    if not teacher.is_teacher:
+        raise MarketError('Only teachers can pay platform dues.')
+    config = PaymentMethodConfiguration.objects.filter(pk=1).first()
+    flags = {
+        Payment.Method.JAZZCASH: bool(config and config.jazzcash_enabled),
+        Payment.Method.EASYPAISA: bool(config and config.easypaisa_enabled),
+        Payment.Method.BANK_TRANSFER: bool(config and config.bank_transfer_enabled),
+        Payment.Method.STRIPE: bool(config and config.stripe_enabled),
+    }
+    if method not in flags or not flags[method]:
+        raise MarketError('That payment method is not currently available.')
+    if Payment.objects.select_for_update().filter(teacher=teacher, is_platform_payment=True,
+            status=Payment.Status.PENDING).exists():
+        raise MarketError('You already have a platform payment awaiting verification.')
+    summary = teacher_financial_summary(teacher)
+    amount = summary['outstanding_platform']
+    if amount <= Decimal('0.00'):
+        raise MarketError('You have no outstanding platform dues.')
+    if method == Payment.Method.STRIPE:
+        from .payment_gateways.base import payment_methods
+        if not next((m['enabled'] for m in payment_methods() if m['code'] == method), False):
+            raise MarketError('Stripe is not ready for verified payments.')
+    else:
+        reference = transaction_reference.strip().upper()
+        if not reference or len(reference) > 100 or receipt is None:
+            raise MarketError('Enter a transaction reference and upload the payment receipt.')
+        if receipt.size > 5 * 1024 * 1024:
+            raise MarketError('Receipt must be no larger than 5 MB.')
+        header = receipt.read(8)
+        receipt.seek(0)
+        if not (header.startswith(b'%PDF-') or header.startswith(b'\x89PNG\r\n\x1a\n')
+                or header.startswith(b'\xff\xd8\xff')):
+            raise MarketError('Upload a valid JPG, PNG, or PDF receipt.')
+        if Payment.objects.filter(transaction_reference__iexact=reference).exists():
+            raise MarketError('That transaction reference was already submitted.')
+    try:
+        payment = Payment.objects.create(student=teacher, teacher=teacher, amount=amount, method=method,
+            transaction_reference=reference if method != Payment.Method.STRIPE else '', receipt=receipt,
+            is_platform_payment=True, platform_commission=amount, teacher_earning=Decimal('0.00'))
+    except IntegrityError as exc:
+        raise MarketError('A platform payment is already pending or that reference was already submitted.') from exc
+    audit = PaymentStatusAudit.objects.create(payment=payment, actor=teacher,
+        old_status=Payment.Status.PENDING, new_status=Payment.Status.PENDING,
+        note='Teacher submitted platform dues for verification.')
+    from apps.notifications.events import notify_payment_submitted
+    notify_payment_submitted(payment, audit)
+    return payment
+
+
+def _reject_pending_payments(queryset, *, actor=None, note):
+    now = timezone.now()
+    for payment in queryset.select_for_update():
+        old_status = payment.status
+        payment.status = Payment.Status.REJECTED
+        payment.confirmed_at = now
+        payment.save(update_fields=['status', 'confirmed_at'])
+        audit = PaymentStatusAudit.objects.create(
+            payment=payment, actor=actor, old_status=old_status,
+            new_status=payment.status, note=note,
+        )
+        from apps.notifications.events import notify_payment_status
+        notify_payment_status(payment, audit, actor=actor)
 
 
 @transaction.atomic
@@ -887,9 +1003,9 @@ def book_session(student, session):
     if booking and booking.status == SessionBooking.Status.PENDING_PAYMENT and class_student:
         booking.status = SessionBooking.Status.CONFIRMED
         booking.save(update_fields=['status'])
-        Payment.objects.filter(
+        _reject_pending_payments(Payment.objects.filter(
             session=session, student=student, status=Payment.Status.PENDING,
-        ).update(status=Payment.Status.REJECTED, confirmed_at=now)
+        ), actor=student, note='Pending payment was replaced by class access.')
         return booking
     if live.filter(student=student).exists():
         raise MarketError('You already booked this session.')
@@ -956,9 +1072,9 @@ def cancel_session(session):
     session.bookings.exclude(status=SessionBooking.Status.CANCELLED).update(
         status=SessionBooking.Status.CANCELLED,
     )
-    Payment.objects.filter(session=session, status=Payment.Status.PENDING).update(
-        status=Payment.Status.REJECTED,
-        confirmed_at=timezone.now(),
+    _reject_pending_payments(
+        Payment.objects.filter(session=session, status=Payment.Status.PENDING),
+        actor=session.teacher, note='Session cancelled by the teacher.',
     )
     return session
 
@@ -975,9 +1091,9 @@ def cancel_session_booking(student, session):
         raise MarketError('Bookings can only be cancelled before the session starts.')
     booking.status = SessionBooking.Status.CANCELLED
     booking.save(update_fields=['status'])
-    Payment.objects.filter(
+    _reject_pending_payments(Payment.objects.filter(
         session=session, student=student, status=Payment.Status.PENDING,
-    ).update(status=Payment.Status.REJECTED, confirmed_at=timezone.now())
+    ), actor=student, note='Student cancelled the session booking.')
     return booking
 
 

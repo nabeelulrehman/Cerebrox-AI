@@ -11,11 +11,14 @@ ENV_FILE = BASE_DIR / '.env'
 if not ENV_FILE.is_file() and (BASE_DIR / 'env').is_file():
     ENV_FILE = BASE_DIR / 'env'
 _DOTENV_VALUES = dotenv_values(ENV_FILE)
+IS_VERCEL = os.environ.get('VERCEL', '').strip().lower() in {'1', 'true', 'yes', 'on'}
 
 
 def _environment_value(name, default=''):
     """Prefer an explicitly supplied environment value, but let .env fill blanks."""
     value = os.environ.get(name)
+    if IS_VERCEL:
+        return default if value is None else value
     if value is None or not value.strip():
         value = _DOTENV_VALUES.get(name)
     return default if value is None else value
@@ -32,15 +35,20 @@ _PROCESS_GEMINI_API_KEY = _normalize_gemini_api_key(os.environ.get('GEMINI_API_K
 _DOTENV_GEMINI_API_KEY = _normalize_gemini_api_key(
     _DOTENV_VALUES.get('GEMINI_API_KEY')
 )
-load_dotenv(dotenv_path=ENV_FILE)
+if not IS_VERCEL:
+    load_dotenv(dotenv_path=ENV_FILE)
 
 def _env_bool(name, default=False):
     return _environment_value(name, str(default)).strip().lower() in {'1', 'true', 'yes', 'on'}
 
 
-DEBUG = _env_bool('DEBUG', True)
+# Vercel's production mode must be determined from Vercel's process environment,
+# never from a developer's local .env file.
+DEBUG = (
+    os.environ.get('DEBUG', 'False').strip().lower() in {'1', 'true', 'yes', 'on'}
+    if IS_VERCEL else True
+)
 SECRET_KEY = _environment_value('SECRET_KEY', 'django-insecure-change-this-in-production')
-IS_VERCEL = _env_bool('VERCEL', False)
 configured_allowed_hosts = _environment_value('ALLOWED_HOSTS', '127.0.0.1,localhost')
 ALLOWED_HOSTS = [host.strip() for host in _environment_value(
     'ALLOWED_HOSTS', '127.0.0.1,localhost'
@@ -83,6 +91,7 @@ INSTALLED_APPS = [
     'apps.classrooms',
     'apps.class_quizzes',
     'apps.marketplace',
+    'apps.notifications',
 ]
 
 MIDDLEWARE = [
@@ -111,6 +120,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'apps.notifications.context_processors.notification_context',
             ],
         },
     },
@@ -119,8 +129,12 @@ TEMPLATES = [
 WSGI_APPLICATION = 'config.wsgi.application'
 ASGI_APPLICATION = 'config.asgi.application'
 
-DATABASE_URL = _environment_value('DATABASE_URL').strip()
-if DATABASE_URL:
+if IS_VERCEL:
+    # Only the Vercel project environment can select the production database.
+    # Local .env values are deliberately ignored, even if they contain DATABASE_URL.
+    DATABASE_URL = os.environ.get('DATABASE_URL', '').strip()
+    if not DATABASE_URL:
+        raise RuntimeError('Set DATABASE_URL to the existing Neon PostgreSQL database in Vercel.')
     parsed_database_url = urlparse(DATABASE_URL)
     if parsed_database_url.scheme not in {'postgres', 'postgresql', 'postgresql+psycopg'}:
         raise RuntimeError('DATABASE_URL must use PostgreSQL (postgresql://...).')
@@ -139,8 +153,8 @@ if DATABASE_URL:
         'OPTIONS': database_options,
     }}
 else:
-    if IS_VERCEL:
-        raise RuntimeError('Set DATABASE_URL to a persistent PostgreSQL database in Vercel.')
+    # Local development always uses its own file and never opens a remote DB URL.
+    DATABASE_URL = ''
     DATABASES = {'default': {'ENGINE': 'django.db.backends.sqlite3', 'NAME': BASE_DIR / 'db.sqlite3'}}
 
 AUTH_USER_MODEL = 'accounts.User'
